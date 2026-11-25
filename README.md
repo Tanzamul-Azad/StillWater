@@ -8,6 +8,8 @@ Sweep across the canopy and its branches sound like strings. Let the tree play i
 
 [Watch the demo](submission/stillwater-demo.mp4) · [Hear the recursive score](submission/moonlit-lagoon.wav) · [Hear a recorded gesture](submission/by-hand.wav) · [Demo walkthrough](submission/DEMO.md)
 
+[AI development log](AI_LOG.md)
+
 ## Open the instrument
 
 Open `dist/index.html` in a current browser. Keep it beside the other files in `dist/` so the instrument can load its styles, bundle and backdrop. The checked-in bundle works offline and needs no server or installation. The same directory can be deployed on any static host.
