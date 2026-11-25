@@ -2,8 +2,8 @@
 
 **Stillwater is a tree you can play. Every branch on screen is a note.**
 
-1. **0:00–0:10 · Play the canopy.** Click **Record a take** and sweep across the branching paths. Point out the stereo motion, expanding ripples and note readout. Play a couple of the keys under the tree before finishing the take.
-2. **0:10–0:24 · Listen back.** Play the recording. The same branches light up with the timing of the original gesture. Show **Download take WAV**.
+1. **0:00–0:10 · Play the canopy.** Tap the red record button and sweep across the branching paths. Point out the stereo motion, expanding ripples and note readout.
+2. **0:10–0:24 · Play a path and listen back.** Open **Explore branches**, choose a branch and press **Play path**. Finish recording, replay the take and show **Download take WAV**.
 3. **0:24–0:39 · Let recursion perform.** Choose **Violet Hour**, adjust Depth and then press Play. The automated sequence visits the parent first, then the left subtree, then the right.
 4. **0:39–0:45 · Share the result.** Use the expand button to give the tree the window. Point judges to the bundled WAV and the offline entry point in the README.
 

@@ -14,9 +14,9 @@ Open `dist/index.html` in a current browser. Keep it beside the other files in `
 
 ## Play the tree
 
-1. **Touch or drag** across branches to play their notes. The displayed keys and **Explore branches** provide keyboard and touch alternatives.
+1. **Touch or drag** across branches to play their notes. The displayed keys and **Explore branches** provide keyboard and touch alternatives. Use **Play path** to hear the melody from the trunk to a selected branch.
 2. **Shape the score** with Depth, Spread, Branch length, Tempo and Seed. Switch between Moonlit Lagoon, Cedar Rain and Violet Hour for different scales, timbres and ambience.
-3. **Play** the recursive score or **Record a take** to keep up to 24 seconds of your own timing. Finish the take, then click the track name above the waveform to switch between the take and the recursive score. One take stays available for the current session.
+3. **Play** the recursive score or tap the red record button on the garden to keep up to 24 seconds of your own timing. Finish the take, then click the track name above the waveform to switch between the take and the recursive score. One take stays available for the current session. The Field guide includes a switch for letter shortcuts.
 4. **Download WAV** to save the selected track as 44.1 kHz stereo, 16-bit PCM, including harmony, ambience and the effect tail. The transport includes seek, restart, loop and volume.
 
 ## How the tree turns into music

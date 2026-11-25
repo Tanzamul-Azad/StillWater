@@ -86,6 +86,12 @@ export function compose(settings) {
 
 export const takeLimits = { seconds: 24, notes: 96 };
 
+export function branchPath(branches, index) {
+  const path = [];
+  for (let branch = branches[index]; branch; branch = branches[branch.parent]) path.push(branch);
+  return path.reverse();
+}
+
 export function composeTake(score, notes) {
   if (!notes.length) return null;
   const first = notes[0].time;

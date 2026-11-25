@@ -69,8 +69,12 @@ export function instrumentBus(context, destination, seed) {
 
 function roomTone(context, mix, score) {
   const random = randomFrom(score.settings.seed ^ 0x71d2);
-  const frames = Math.floor(context.sampleRate * score.duration);
-  const sample = context.createBuffer(2, frames, context.sampleRate);
+  // The ambient bed is filtered, so a short, crossfaded loop at half the
+  // output sample rate is enough for any score length.
+  const noiseRate = context.sampleRate / 2;
+  const frames = Math.floor(noiseRate * 8.3);
+  const overlap = Math.floor(noiseRate * 0.06);
+  const sample = context.createBuffer(2, frames, noiseRate);
   for (let channel = 0; channel < 2; channel++) {
     const data = sample.getChannelData(channel);
     let color = 0;
@@ -78,11 +82,18 @@ function roomTone(context, mix, score) {
       color = 0.94 * color + 0.06 * (random() * 2 - 1);
       data[i] = color;
     }
+    for (let i = 0; i < overlap; i++) {
+      const blend = i / (overlap - 1);
+      const end = frames - overlap + i;
+      data[end] = data[end] * (1 - blend) + data[i] * blend;
+    }
   }
   const noise = context.createBufferSource();
   const filter = context.createBiquadFilter();
   const envelope = context.createGain();
   noise.buffer = sample;
+  noise.loop = true;
+  noise.loopStart = overlap / noiseRate;
   filter.type = 'bandpass';
   filter.frequency.value = score.settings.scene === 'cedar' ? 1090 : 380;
   filter.Q.value = 0.42;
@@ -104,7 +115,10 @@ export async function renderScore(score) {
   const reverb = makeSpace(offline, mix, score.settings.seed);
   notes.connect(mix);
   notes.connect(reverb);
-  mix.gain.value = 0.95;
+  const lastFrame = (offline.length - 1) / sampleRate;
+  mix.gain.setValueAtTime(0.95, 0);
+  mix.gain.setValueAtTime(0.95, lastFrame - 0.12);
+  mix.gain.linearRampToValueAtTime(0, lastFrame);
   mix.connect(offline.destination);
   roomTone(offline, mix, score);
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeWave } from '../dist/audio.mjs';
-import { compose, composeTake, scenes } from '../dist/score.mjs';
+import { branchPath, compose, composeTake, scenes } from '../dist/score.mjs';
 
 for (const scene of Object.keys(scenes)) {
   test(`${scene} produces a complete, ordered binary tree`, () => {
@@ -49,6 +49,15 @@ test('a recorded take keeps gesture order, pauses, repeated notes and a full rel
   assert.deepEqual(take.events.map(event => event.midi), [tree.branches[4].midi, tree.branches[0].midi, tree.branches[4].midi]);
   assert.deepEqual(take.events.map(event => Math.round(event.time * 100)), [24, 49, 199]);
   assert.ok(take.duration > Math.max(...take.events.map(event => event.time + event.decay)));
+});
+
+test('a playable branch path follows parent links from the trunk to its tip', () => {
+  const tree = compose({ ...scenes.lagoon, scene: 'lagoon', depth: 6 });
+  const tip = tree.branches.find(branch => branch.path === 'RLRRLL');
+  const path = branchPath(tree.branches, tip.index);
+  assert.deepEqual(path.map(branch => branch.path), ['', 'R', 'RL', 'RLR', 'RLRR', 'RLRRL', 'RLRRLL']);
+  assert.deepEqual(branchPath(tree.branches, 0), [tree.branches[0]]);
+  assert.deepEqual(branchPath(tree.branches, undefined), []);
 });
 
 test('WAV export stores an interleaved stereo, 16-bit PCM stream', async () => {

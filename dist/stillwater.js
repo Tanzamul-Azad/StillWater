@@ -116,6 +116,11 @@
     return { settings, scene: scene2, branches, events: branches, duration: last.time + last.decay + 2.35 };
   }
   var takeLimits = { seconds: 24, notes: 96 };
+  function branchPath(branches, index) {
+    const path = [];
+    for (let branch = branches[index]; branch; branch = branches[branch.parent]) path.push(branch);
+    return path.reverse();
+  }
   function composeTake(score2, notes) {
     if (!notes.length) return null;
     const first = notes[0].time;
@@ -192,8 +197,10 @@
   }
   function roomTone(context2, mix, score2) {
     const random = randomFrom(score2.settings.seed ^ 29138);
-    const frames = Math.floor(context2.sampleRate * score2.duration);
-    const sample = context2.createBuffer(2, frames, context2.sampleRate);
+    const noiseRate = context2.sampleRate / 2;
+    const frames = Math.floor(noiseRate * 8.3);
+    const overlap = Math.floor(noiseRate * 0.06);
+    const sample = context2.createBuffer(2, frames, noiseRate);
     for (let channel = 0; channel < 2; channel++) {
       const data = sample.getChannelData(channel);
       let color = 0;
@@ -201,11 +208,18 @@
         color = 0.94 * color + 0.06 * (random() * 2 - 1);
         data[i] = color;
       }
+      for (let i = 0; i < overlap; i++) {
+        const blend = i / (overlap - 1);
+        const end = frames - overlap + i;
+        data[end] = data[end] * (1 - blend) + data[i] * blend;
+      }
     }
     const noise = context2.createBufferSource();
     const filter = context2.createBiquadFilter();
     const envelope = context2.createGain();
     noise.buffer = sample;
+    noise.loop = true;
+    noise.loopStart = overlap / noiseRate;
     filter.type = "bandpass";
     filter.frequency.value = score2.settings.scene === "cedar" ? 1090 : 380;
     filter.Q.value = 0.42;
@@ -226,7 +240,10 @@
     const reverb = makeSpace(offline, mix, score2.settings.seed);
     notes.connect(mix);
     notes.connect(reverb);
-    mix.gain.value = 0.95;
+    const lastFrame = (offline.length - 1) / sampleRate;
+    mix.gain.setValueAtTime(0.95, 0);
+    mix.gain.setValueAtTime(0.95, lastFrame - 0.12);
+    mix.gain.linearRampToValueAtTime(0, lastFrame);
     mix.connect(offline.destination);
     roomTone(offline, mix, score2);
     const sections = score2.take ? score2.events.filter((_, index) => index === 0 || index === Math.floor(score2.events.length / 2)) : score2.branches.filter((branch) => branch.depth === 1);
@@ -665,12 +682,7 @@ void main() {
         ctx.bezierCurveTo(baseX + root * 0.6, baseY - 3, baseX + reach * 0.64, baseY + root * 0.55, baseX + reach, baseY + root * 0.7);
         ctx.stroke();
       }
-      const focus = /* @__PURE__ */ new Set();
-      let ancestor = hover2 ?? selected2;
-      while (ancestor != null) {
-        focus.add(ancestor);
-        ancestor = branches[ancestor].parent;
-      }
+      const focus = new Set(branchPath(branches, hover2 ?? selected2).map((branch) => branch.index));
       for (const branch of branches) {
         const age = heard.get(branch.index) ?? Infinity;
         const lit = age < Infinity;
@@ -786,6 +798,9 @@ void main() {
   var presetButtons = [...document.querySelectorAll("[data-scene]")];
   var playButton = byId("play");
   var recordButton = byId("record");
+  var stageRecord = byId("stage-record");
+  var stageCapture = byId("stage-capture");
+  var shortcuts = byId("shortcuts");
   var expandButton = byId("expand");
   var trackButton = byId("track");
   var seek = byId("seek");
@@ -812,6 +827,8 @@ void main() {
   var renderedScore;
   var active;
   var playRequest;
+  var pathRequest;
+  var scrub;
   var position = 0;
   var hasPlayed = false;
   var looping = false;
@@ -888,6 +905,7 @@ void main() {
     seek.value = time;
     seek.setAttribute("aria-valuetext", clock(time) + " of " + clock(target.duration));
     byId("elapsed").textContent = clock(time);
+    playButton.setAttribute("aria-busy", String(Boolean(playRequest)));
     if (playRequest) updateButton(playButton, "pause", "Cancel preparing audio");
     else if (active) updateButton(playButton, "pause", useTake ? "Pause take" : "Pause composition");
     else updateButton(playButton, "play", useTake ? "Play take" : "Play composition");
@@ -918,7 +936,9 @@ void main() {
     const message = branch ? describe(branch) : "Branch notes";
     if (byId("branch-detail").textContent !== message) byId("branch-detail").textContent = message;
     if (recording?.start != null) {
-      byId("capture-state").textContent = clock(now - recording.start) + " · " + recording.notes.length + " notes";
+      const elapsed = clock(now - recording.start);
+      byId("capture-state").textContent = elapsed + " · " + noteCount(recording.notes.length);
+      stageCapture.textContent = elapsed + " · " + noteCount(recording.notes.length);
     }
   }
   function requestPaint() {
@@ -953,6 +973,7 @@ void main() {
   function pause() {
     position = currentPosition();
     playRequest = null;
+    scrub = null;
     detach();
     updateTransport();
     draw();
@@ -974,15 +995,17 @@ void main() {
   }
   function rendered(target) {
     if (target === renderedScore?.target) return renderedScore.promise;
-    const promise = renderScore(target).then((buffer) => {
+    const result = { target, buffer: null, promise: null };
+    result.promise = renderScore(target).then((buffer) => {
+      result.buffer = buffer;
       if (target === currentScore()) buildMeter(target, buffer);
       return buffer;
     }).catch((error) => {
-      if (renderedScore?.promise === promise) renderedScore = null;
+      if (renderedScore === result) renderedScore = null;
       throw error;
     });
-    renderedScore = { target, promise };
-    return promise;
+    renderedScore = result;
+    return result.promise;
   }
   function start(buffer, offset) {
     const source = context.createBufferSource();
@@ -1007,7 +1030,7 @@ void main() {
     requestPaint();
   }
   async function play() {
-    if (recording) return;
+    if (recording || scrub) return;
     if (active || playRequest) {
       pause();
       return;
@@ -1021,6 +1044,10 @@ void main() {
       if (playRequest !== request) return;
       const buffer = await rendered(target);
       if (playRequest !== request) return;
+      if (scrub) {
+        scrub.buffer = buffer;
+        return;
+      }
       if (position >= target.duration - 0.02) position = 0;
       hasPlayed = true;
       selected = null;
@@ -1037,6 +1064,7 @@ void main() {
   }
   function seekTo(next) {
     const buffer = active?.buffer;
+    scrub = null;
     detach();
     position = next;
     hasPlayed = next > 0 || Boolean(buffer);
@@ -1044,12 +1072,47 @@ void main() {
     updateTransport();
     draw();
   }
+  function beginScrub(event) {
+    if (!event.isPrimary || event.button !== 0 || seek.disabled) return;
+    scrub = { pointerId: event.pointerId, buffer: active?.buffer };
+    position = currentPosition();
+    detach();
+  }
+  function updateSeek() {
+    const next = Number(seek.value);
+    if (!scrub) {
+      seekTo(next);
+      return;
+    }
+    position = next;
+    hasPlayed = next > 0;
+    updateTransport();
+    draw();
+  }
+  function finishScrub(event) {
+    if (scrub?.pointerId !== event.pointerId) return;
+    const { buffer } = scrub;
+    scrub = null;
+    if (buffer && position < currentScore().duration - 0.02) {
+      hasPlayed = true;
+      start(buffer, position);
+    }
+    updateTransport();
+    draw();
+  }
+  function noteCount(count) {
+    return count + (count === 1 ? " note" : " notes");
+  }
   function updateCapture() {
     const capturing = Boolean(recording);
     recordButton.setAttribute("aria-pressed", String(capturing));
     recordButton.querySelector("use").setAttribute("href", capturing ? "#icon-stop" : "#icon-record");
     recordButton.querySelector("span").textContent = capturing ? "Finish take" : "Record a take";
-    byId("capture-state").textContent = capturing ? "Armed" : take ? take.events.length + " notes" : "Ready";
+    stageRecord.setAttribute("aria-pressed", String(capturing));
+    updateButton(stageRecord, capturing ? "stop" : "record", capturing ? "Stop recording" : "Start recording");
+    stageCapture.hidden = !capturing;
+    stageCapture.textContent = "Armed";
+    byId("capture-state").textContent = capturing ? "Armed" : take ? noteCount(take.events.length) : "Ready";
     byId("capture-help").textContent = capturing ? "Recording starts with your first note." : "Play the tree or use the note keys.";
     byId("art").dataset.recording = capturing;
     byId("capture-state").parentElement.parentElement.dataset.recording = capturing;
@@ -1075,7 +1138,7 @@ void main() {
       const key = keys[index];
       button.type = "button";
       button.className = "key";
-      button.setAttribute("aria-keyshortcuts", key.toUpperCase());
+      if (shortcuts.checked) button.setAttribute("aria-keyshortcuts", key.toUpperCase());
       const letter = document.createElement("kbd");
       letter.textContent = key.toUpperCase();
       button.append(letter, document.createTextNode(noteName(branch.midi)));
@@ -1098,11 +1161,14 @@ void main() {
   }
   function chooseTrack(recorded) {
     playRequest = null;
+    pathRequest = null;
+    scrub = null;
     detach();
     useTake = recorded && Boolean(take);
     position = 0;
     hasPlayed = false;
     selected = hover = null;
+    clearTimeout(stroke?.timer);
     stroke = null;
     live = [];
     trail = [];
@@ -1119,8 +1185,9 @@ void main() {
     document.documentElement.style.setProperty("--accent", target.scene.accent);
     trackButton.textContent = useTake ? "Recorded take" : "Recursive score";
     trackButton.title = useTake ? "Switch to recursive score" : "Switch to recorded take";
+    trackButton.setAttribute("aria-label", take ? trackButton.textContent + ". " + trackButton.title : trackButton.textContent);
     if (!exporting) download.querySelector("span").textContent = useTake ? "Download take WAV" : "Download WAV";
-    buildMeter(target);
+    buildMeter(target, target === renderedScore?.target ? renderedScore.buffer : null);
     buildKeys(target);
     updateCapture();
     updateTransport();
@@ -1130,7 +1197,7 @@ void main() {
   function finishRecording() {
     if (!recording) return;
     clearTimeout(recording.timer);
-    const result = composeTake(score, recording.notes);
+    const result = composeTake(recording.source, recording.notes);
     recording = null;
     if (!result) {
       updateCapture();
@@ -1146,10 +1213,12 @@ void main() {
       finishRecording();
       return;
     }
-    chooseTrack(false);
-    recording = { notes: [], start: null, timer: null };
+    chooseTrack(useTake);
+    const session = { source: currentScore(), notes: [], start: null, timer: null };
+    recording = session;
     updateCapture();
     enableAudio().catch((error) => {
+      if (recording !== session) return;
       console.error(error);
       finishRecording();
       notify("Audio is unavailable in this browser.");
@@ -1249,9 +1318,13 @@ void main() {
   }
   playButton.addEventListener("click", play);
   recordButton.addEventListener("click", toggleRecording);
+  stageRecord.addEventListener("click", toggleRecording);
   trackButton.addEventListener("click", () => chooseTrack(!useTake));
   byId("restart").addEventListener("click", () => seekTo(0));
-  seek.addEventListener("input", () => seekTo(Number(seek.value)));
+  seek.addEventListener("pointerdown", beginScrub);
+  seek.addEventListener("input", updateSeek);
+  window.addEventListener("pointerup", finishScrub);
+  window.addEventListener("pointercancel", finishScrub);
   loopButton.addEventListener("click", () => {
     const offset = currentPosition();
     const buffer = active?.buffer;
@@ -1289,11 +1362,31 @@ void main() {
     byId("branch-dialog").showModal();
   });
   byId("preview-note").addEventListener("click", () => preview(Number(branchSelect.value)));
+  byId("preview-path").addEventListener("click", () => {
+    const target = currentScore();
+    const session = recording;
+    const route = branchPath(target.branches, Number(branchSelect.value));
+    const request = {};
+    const step = 31e3 / target.settings.tempo;
+    pathRequest = request;
+    byId("branch-dialog").close();
+    hover = null;
+    const queue = (index) => {
+      if (pathRequest !== request || recording !== session || target !== currentScore()) return;
+      preview(route[index].index);
+      if (index + 1 < route.length) setTimeout(() => queue(index + 1), step);
+    };
+    if (route.length) queue(0);
+  });
+  shortcuts.addEventListener("change", () => {
+    document.querySelector(".keyboard").dataset.shortcuts = String(shortcuts.checked);
+    buildKeys(currentScore());
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !document.querySelector("dialog[open]") && document.querySelector("main").dataset.expanded === "true") {
       expandGarden(false);
     }
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
+    if (!shortcuts.checked || event.key.length !== 1 || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
     const index = keys.indexOf(event.key.toLowerCase());
     if (index >= 0) triggerKey(index);
   });
@@ -1303,12 +1396,20 @@ void main() {
     garden.canvas.style.cursor = hover === null ? "crosshair" : "pointer";
     requestPaint();
   }
+  function playStrokeNote(gesture, index, now) {
+    clearTimeout(gesture.timer);
+    gesture.timer = null;
+    gesture.pending = null;
+    gesture.last = index;
+    gesture.time = now;
+    preview(index);
+  }
   garden.canvas.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     inspectPointer(event);
     garden.canvas.setPointerCapture(event.pointerId);
     const now = seconds();
-    stroke = { id: event.pointerId, point: cursor, time: now, last: hover };
+    stroke = { id: event.pointerId, point: cursor, time: hover === null ? -Infinity : now, last: hover, pending: null, timer: null };
     trail = [{ ...cursor, time: now }];
     if (hover !== null) preview(hover);
   });
@@ -1321,7 +1422,6 @@ void main() {
     if (trail.length > 39) trail.shift();
     const origin = stroke.point;
     stroke.point = cursor;
-    if (now - stroke.time < 0.068) return;
     const steps = Math.min(24, Math.max(1, Math.ceil(Math.hypot(cursor.x - origin.x, cursor.y - origin.y) / 8)));
     for (let step = 1; step <= steps; step++) {
       const fraction = step / steps;
@@ -1330,14 +1430,26 @@ void main() {
         y: origin.y + (cursor.y - origin.y) * fraction
       });
       if (index === null || index === stroke.last) continue;
-      stroke.last = index;
-      stroke.time = now;
-      preview(index);
+      const gesture = stroke;
+      const delay = 0.068 - (now - gesture.time);
+      if (delay <= 0) {
+        playStrokeNote(gesture, index, now);
+        break;
+      }
+      gesture.pending = index;
+      if (gesture.timer == null) {
+        gesture.timer = setTimeout(() => playStrokeNote(gesture, gesture.pending, seconds()), delay * 1e3);
+      }
       break;
     }
   });
   function endStroke(event) {
-    if (stroke?.id === event.pointerId) stroke = null;
+    if (stroke?.id === event.pointerId) {
+      const gesture = stroke;
+      stroke = null;
+      clearTimeout(gesture.timer);
+      if (event.type === "pointerup" && gesture.pending !== null) preview(gesture.pending);
+    }
     if (event.pointerType === "touch") {
       cursor = hover = null;
       requestPaint();

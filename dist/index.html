@@ -50,12 +50,14 @@
           <div class="stage-scene">
             <span id="scene-name">Moonlit Lagoon</span>
             <span id="scene-scale">D major pentatonic</span>
+            <span id="stage-capture" class="stage-capture" aria-hidden="true" hidden>Armed</span>
           </div>
           <div class="art-bottom">
             <div class="branch-readout"><span id="branch-note" aria-hidden="true">♪</span><p id="branch-detail">Branch notes</p></div>
             <div class="stage-tools">
               <button class="branch-picker" id="browse" type="button">Explore branches</button>
-              <button class="icon-button expand-button" id="expand" type="button" aria-label="Expand garden" title="Expand garden"><svg class="icon" aria-hidden="true"><use href="#icon-expand"/></svg></button>
+              <button class="icon-button stage-button" id="stage-record" type="button" aria-label="Start recording" aria-pressed="false" title="Start recording"><svg class="icon" aria-hidden="true"><use href="#icon-record"/></svg></button>
+              <button class="icon-button stage-button" id="expand" type="button" aria-label="Expand garden" title="Expand garden"><svg class="icon" aria-hidden="true"><use href="#icon-expand"/></svg></button>
             </div>
           </div>
         </div>
@@ -63,7 +65,7 @@
         <div class="transport">
           <button type="button" class="play-button" id="play" aria-label="Play composition"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
           <div class="timeline">
-            <div class="timeline-top"><button type="button" id="track" class="track-button" disabled aria-label="Switch between recursive score and recorded take">Recursive score</button><span><span id="elapsed">0:00</span><span class="time-divider"> / </span><span id="duration">0:33</span></span></div>
+            <div class="timeline-top"><button type="button" id="track" class="track-button" disabled>Recursive score</button><span><span id="elapsed">0:00</span><span class="time-divider"> / </span><span id="duration">0:32</span></span></div>
             <label class="sr-only" for="seek">Playback position</label>
             <div class="wave-track"><div id="meter" class="meter" aria-hidden="true"></div><input id="seek" class="seek" type="range" min="0" max="33" value="0" step="0.01"></div>
           </div>
@@ -75,6 +77,12 @@
             <input id="volume" type="range" min="0" max="100" value="65">
           </div>
         </div>
+      </section>
+
+      <section class="keyboard" aria-label="Play branches with a keyboard">
+        <div class="keys-label"><svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg><span>Branch keys</span></div>
+        <div id="keys" class="keys" role="group" aria-label="Playable branch notes"></div>
+        <p class="headphones">Best with headphones</p>
       </section>
 
       <section class="settings" aria-labelledby="sculpt-title">
@@ -122,11 +130,6 @@
         <button class="download-button" id="download" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg><span>Download WAV</span></button>
       </section>
     </div>
-    <section class="keyboard" aria-label="Play branches with a keyboard">
-      <div class="keys-label"><svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg><span>Play the scale</span></div>
-      <div id="keys" class="keys" role="group" aria-label="Playable branch notes"></div>
-      <p class="headphones">Best with headphones</p>
-    </section>
 
     <footer>Stillwater <span aria-hidden="true">·</span> Built for <span>Hub’s Quest, Epoch 1</span></footer>
   </main>
@@ -138,14 +141,18 @@
     <p>The music visits a parent, then its left subtree, then its right. The two paths choose different steps on the scale. A branch to the left pans left, terminal branches play closer together, and the first branches lend their notes to the low, sustained harmony.</p>
     <p>Drag across the canopy, tap a branch, or play the displayed keys. Record a take to keep up to 24 seconds of your playing. When a take is ready, choose between it and the recursive score above the timeline.</p>
     <p>Use the same soundscape, controls and seed to grow the same tree again.</p>
+    <label class="shortcut-toggle"><input id="shortcuts" type="checkbox" checked> Play with letter shortcuts</label>
   </dialog>
   <dialog id="branch-dialog" aria-labelledby="browse-title">
     <form method="dialog"><button class="icon-button dialog-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></form>
     <h2 id="browse-title">Explore branches</h2>
-    <p>The branches appear in playback order. Choose one to hear its note on its own.</p>
+    <p>Hear one note or play the path from the trunk to that branch.</p>
     <label for="branch-select">Branch</label>
-    <select id="branch-select"></select>
-    <button class="download-button" id="preview-note" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg>Hear note</button>
+    <select id="branch-select" autofocus></select>
+    <div class="branch-actions">
+      <button class="download-button" id="preview-note" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg>Hear note</button>
+      <button class="download-button" id="preview-path" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg>Play path</button>
+    </div>
   </dialog>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
 </body>

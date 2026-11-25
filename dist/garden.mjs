@@ -1,4 +1,4 @@
-import { randomFrom } from './score.mjs';
+import { branchPath, randomFrom } from './score.mjs';
 import { Water } from './water.mjs';
 
 const TAU = Math.PI * 2;
@@ -230,12 +230,7 @@ export class Garden {
       ctx.stroke();
     }
 
-    const focus = new Set();
-    let ancestor = hover ?? selected;
-    while (ancestor != null) {
-      focus.add(ancestor);
-      ancestor = branches[ancestor].parent;
-    }
+    const focus = new Set(branchPath(branches, hover ?? selected).map(branch => branch.index));
     for (const branch of branches) {
       const age = heard.get(branch.index) ?? Infinity;
       const lit = age < Infinity;
