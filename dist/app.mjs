@@ -1,12 +1,16 @@
-import { clock, compose, noteName, scenes } from './score.mjs';
-import { encodeWave, playBranch, renderScore } from './audio.mjs';
+import { clock, compose, composeTake, noteName, scenes, takeLimits } from './score.mjs';
+import { encodeWave, instrumentBus, playBranch, renderScore } from './audio.mjs';
 import { Garden } from './garden.mjs';
 
 const byId = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const controls = ['depth', 'angle', 'taper', 'tempo', 'seed'];
+const keys = 'asdfghjk';
 const presetButtons = [...document.querySelectorAll('[data-scene]')];
 const playButton = byId('play');
+const recordButton = byId('record');
+const expandButton = byId('expand');
+const trackButton = byId('track');
 const seek = byId('seek');
 const volume = byId('volume');
 const mute = byId('mute');
@@ -22,21 +26,38 @@ const labels = {
 };
 
 let score;
-let renderCache;
-let selected = null;
-let hover = null;
 let scene = 'lagoon';
+let take;
+let useTake = false;
+let recording;
+let liveBus;
 let context;
 let master;
+let renderedScore;
 let active;
 let playRequest;
 let position = 0;
 let hasPlayed = false;
 let looping = false;
-let frame;
+let exporting = false;
+let selected = null;
+let hover = null;
+let cursor = null;
+let stroke;
+let trail = [];
+let live = [];
+let keyBranches = [];
+let meterBars = [];
+let frame = 0;
 let lastPaint = -Infinity;
 let noticeTimer;
+let noteAnimation;
+let lightPoint;
+let lightFrame = 0;
 let rememberedVolume = Number(volume.value);
+
+const currentScore = () => useTake ? take : score;
+const seconds = () => performance.now() / 1000;
 
 function notify(message) {
   clearTimeout(noticeTimer);
@@ -60,41 +81,100 @@ function updateButton(button, icon, label) {
 function currentPosition() {
   if (!active) return position;
   const elapsed = active.offset + context.currentTime - active.started;
-  return looping ? elapsed % active.buffer.duration : Math.min(score.duration, elapsed);
+  return looping ? elapsed % active.buffer.duration : Math.min(currentScore().duration, elapsed);
+}
+
+function buildMeter(target, buffer) {
+  const count = 60;
+  const heights = new Float32Array(count);
+  if (buffer) {
+    const samples = buffer.getChannelData(0);
+    const window = samples.length / count;
+    for (let i = 0; i < count; i++) {
+      for (let sample = Math.floor(i * window); sample < (i + 1) * window; sample += 32) {
+        heights[i] = Math.max(heights[i], Math.abs(samples[sample]));
+      }
+    }
+  } else {
+    for (const event of target.events) {
+      const i = Math.floor(event.time / target.duration * count);
+      heights[i] += 0.12 + (6 - event.depth) * 0.025;
+      if (i + 1 < count) heights[i + 1] += 0.066;
+    }
+  }
+  const max = Math.max(0.15, ...heights);
+  meterBars = Array.from(heights, signal => {
+    const bar = document.createElement('i');
+    bar.style.setProperty('--bar', (13 + 84 * Math.sqrt(signal / max)) + '%');
+    return bar;
+  });
+  byId('meter').replaceChildren(...meterBars);
 }
 
 function updateTransport() {
-  const state = currentPosition();
-  seek.value = state;
-  seek.setAttribute('aria-valuetext', clock(state) + ' of ' + clock(score.duration));
-  byId('elapsed').textContent = clock(state);
-  fillRange(seek);
+  const target = currentScore();
+  const time = currentPosition();
+  const progress = Math.floor(time / target.duration * meterBars.length);
+  for (let i = 0; i < meterBars.length; i++) meterBars[i].classList.toggle('played', i < progress);
+  seek.value = time;
+  seek.setAttribute('aria-valuetext', clock(time) + ' of ' + clock(target.duration));
+  byId('elapsed').textContent = clock(time);
   if (playRequest) updateButton(playButton, 'pause', 'Cancel preparing audio');
-  else if (active) updateButton(playButton, 'pause', 'Pause composition');
-  else updateButton(playButton, 'play', 'Play composition');
+  else if (active) updateButton(playButton, 'pause', useTake ? 'Pause take' : 'Pause composition');
+  else updateButton(playButton, 'play', useTake ? 'Play take' : 'Play composition');
+}
+
+function describe(branch) {
+  const path = branch.path ? [...branch.path].join(' › ') : 'Trunk';
+  return path + ' · Level ' + branch.depth;
 }
 
 function draw() {
   if (!score) return;
-  garden.draw({ time: currentPosition(), played: hasPlayed, selected, hover, reduced: reducedMotion.matches });
-  updateBranchDetail();
+  const now = seconds();
+  const target = currentScore();
+  const time = currentPosition();
+  live = live.filter(note => now - note.time < 2);
+  trail = trail.filter(point => now - point.time < 0.48);
+  garden.draw({ time, events: target.events, played: hasPlayed, selected, hover, reduced: reducedMotion.matches, now, cursor, live, trail });
+  const recent = active && target.events.findLast(event => event.time <= time);
+  const branch = target.branches[hover ?? selected] ?? recent;
+  const noteLabel = byId('branch-note');
+  const note = branch ? noteName(branch.midi) : '♪';
+  if (noteLabel.textContent !== note) {
+    noteLabel.textContent = note;
+    noteAnimation?.cancel();
+    if (!reducedMotion.matches) noteAnimation = noteLabel.animate([{ opacity: 0.52 }, { opacity: 1 }], 165);
+  }
+  const age = Math.min(now - (live.at(-1)?.time ?? -Infinity), recent ? time - recent.time : Infinity);
+  document.body.style.setProperty('--wash', reducedMotion.matches ? 0.09 : 0.09 + Math.max(0, 1 - age / 0.72) * 0.13);
+  const message = branch ? describe(branch) : 'Branch notes';
+  if (byId('branch-detail').textContent !== message) byId('branch-detail').textContent = message;
+  if (recording?.start != null) {
+    byId('capture-state').textContent = clock(now - recording.start) + ' · ' + recording.notes.length + ' notes';
+  }
+}
+
+function requestPaint() {
+  if (!frame) frame = requestAnimationFrame(tick);
 }
 
 function tick(now) {
-  if (!active) return;
-  if (now - lastPaint >= (reducedMotion.matches ? 95 : 29)) {
+  frame = 0;
+  if (now - lastPaint >= (reducedMotion.matches ? 75 : 25)) {
     updateTransport();
     draw();
     lastPaint = now;
+  } else {
+    requestPaint();
   }
-  frame = requestAnimationFrame(tick);
+  if (active || recording?.start != null || live.length || trail.length || (!reducedMotion.matches && garden.revealing(seconds()))) requestPaint();
 }
 
 function detach() {
   if (!active) return;
   const { source, gain, started } = active;
   active = null;
-  cancelAnimationFrame(frame);
   const now = context.currentTime;
   source.onended = () => {
     source.disconnect();
@@ -133,12 +213,15 @@ async function enableAudio() {
 }
 
 function rendered(target) {
-  if (target === renderCache?.score) return renderCache.promise;
-  const promise = renderScore(target).catch(error => {
-    if (renderCache?.promise === promise) renderCache = null;
+  if (target === renderedScore?.target) return renderedScore.promise;
+  const promise = renderScore(target).then(buffer => {
+    if (target === currentScore()) buildMeter(target, buffer);
+    return buffer;
+  }).catch(error => {
+    if (renderedScore?.promise === promise) renderedScore = null;
     throw error;
   });
-  renderCache = { score: target, promise };
+  renderedScore = { target, promise };
   return promise;
 }
 
@@ -157,22 +240,21 @@ function start(buffer, offset) {
     gain.disconnect();
     if (active?.source !== source) return;
     active = null;
-    position = score.duration;
-    cancelAnimationFrame(frame);
+    position = currentScore().duration;
     updateTransport();
     draw();
   };
   active = { source, gain, buffer, offset, started: now };
-  lastPaint = -Infinity;
-  frame = requestAnimationFrame(tick);
+  requestPaint();
 }
 
 async function play() {
+  if (recording) return;
   if (active || playRequest) {
     pause();
     return;
   }
-  const target = score;
+  const target = currentScore();
   const request = {};
   playRequest = request;
   updateTransport();
@@ -188,7 +270,7 @@ async function play() {
   } catch (error) {
     if (playRequest !== request) return;
     console.error(error);
-    notify('Audio is unavailable. Try a recent browser with Web Audio support.');
+    notify('Audio is unavailable in this browser.');
   } finally {
     if (playRequest === request) playRequest = null;
     updateTransport();
@@ -201,106 +283,217 @@ function seekTo(next) {
   detach();
   position = next;
   hasPlayed = next > 0 || Boolean(buffer);
-  if (buffer && next < score.duration - 0.02) start(buffer, next);
+  if (buffer && next < currentScore().duration - 0.02) start(buffer, next);
   updateTransport();
   draw();
 }
 
-function description(branch) {
-  const path = branch.path ? [...branch.path].join(' › ') : 'Trunk';
-  return path + ' · depth ' + branch.depth + ' · ' + noteName(branch.midi);
+function updateCapture() {
+  const capturing = Boolean(recording);
+  recordButton.setAttribute('aria-pressed', String(capturing));
+  recordButton.querySelector('use').setAttribute('href', capturing ? '#icon-stop' : '#icon-record');
+  recordButton.querySelector('span').textContent = capturing ? 'Finish take' : 'Record a take';
+  byId('capture-state').textContent = capturing ? 'Armed' : take ? take.events.length + ' notes' : 'Ready';
+  byId('capture-help').textContent = capturing ? 'Recording starts with your first note.' : 'Play the tree or use the note keys.';
+  byId('art').dataset.recording = capturing;
+  byId('capture-state').parentElement.parentElement.dataset.recording = capturing;
+  playButton.disabled = capturing;
+  seek.disabled = capturing;
+  byId('restart').disabled = capturing;
+  loopButton.disabled = capturing;
+  expandButton.disabled = capturing;
+  trackButton.disabled = capturing || !take;
+  for (const key of controls) byId(key).disabled = capturing;
+  byId('shuffle').disabled = capturing;
+  for (const button of presetButtons) button.disabled = capturing;
+  download.disabled = capturing || exporting;
 }
 
-function updateBranchDetail() {
-  const detail = byId('branch-detail');
-  const inspected = score.branches[selected ?? hover];
-  const sounding = active && score.branches.findLast(branch => branch.time <= currentPosition());
-  const message = inspected ? description(inspected) : sounding ? 'Playing · ' + description(sounding) : 'Select a branch to hear its note.';
-  if (detail.textContent !== message) detail.textContent = message;
+function buildKeys(target) {
+  const voiced = new Map();
+  for (const branch of target.branches) {
+    if (!voiced.has(branch.midi)) voiced.set(branch.midi, branch);
+  }
+  keyBranches = [...voiced.values()].sort((left, right) => left.midi - right.midi).slice(0, keys.length);
+  byId('keys').replaceChildren(...keyBranches.map((branch, index) => {
+    const button = document.createElement('button');
+    const key = keys[index];
+    button.type = 'button';
+    button.className = 'key';
+    button.setAttribute('aria-keyshortcuts', key.toUpperCase());
+    const letter = document.createElement('kbd');
+    letter.textContent = key.toUpperCase();
+    button.append(letter, document.createTextNode(noteName(branch.midi)));
+    button.addEventListener('click', () => triggerKey(index));
+    return button;
+  }));
+}
+
+function showSettings(settings) {
+  scene = settings.scene;
+  for (const key of controls) {
+    const input = byId(key);
+    input.value = settings[key];
+    if (!labels[key]) continue;
+    const label = labels[key](settings[key]);
+    byId(key + '-value').textContent = label;
+    input.setAttribute('aria-valuetext', label);
+    fillRange(input);
+  }
+  for (const button of presetButtons) button.setAttribute('aria-pressed', String(button.dataset.scene === scene));
+}
+
+function chooseTrack(recorded) {
+  playRequest = null;
+  detach();
+  useTake = recorded && Boolean(take);
+  position = 0;
+  hasPlayed = false;
+  selected = hover = null;
+  stroke = null;
+  live = [];
+  trail = [];
+  const target = currentScore();
+  showSettings(target.settings);
+  if (garden.score?.branches !== target.branches) {
+    garden.setScore(target, garden.score?.settings.scene !== target.settings.scene);
+  }
+  seek.max = target.duration;
+  byId('duration').textContent = clock(target.duration);
+  byId('scene-name').textContent = target.scene.name;
+  byId('scene-scale').textContent = target.scene.scaleName;
+  byId('branch-count').textContent = target.branches.length + ' branches';
+  document.documentElement.style.setProperty('--accent', target.scene.accent);
+  trackButton.textContent = useTake ? 'Recorded take' : 'Recursive score';
+  trackButton.title = useTake ? 'Switch to recursive score' : 'Switch to recorded take';
+  if (!exporting) download.querySelector('span').textContent = useTake ? 'Download take WAV' : 'Download WAV';
+  buildMeter(target);
+  buildKeys(target);
+  updateCapture();
+  updateTransport();
+  draw();
+  if (!reducedMotion.matches && garden.revealing(seconds())) requestPaint();
+}
+
+function finishRecording() {
+  if (!recording) return;
+  clearTimeout(recording.timer);
+  const result = composeTake(score, recording.notes);
+  recording = null;
+  if (!result) {
+    updateCapture();
+    notify('Play at least one note to save a take.');
+    return;
+  }
+  take = result;
+  chooseTrack(true);
+  notify('Take saved. Play it back or download the WAV.');
+}
+
+function toggleRecording() {
+  if (recording) {
+    finishRecording();
+    return;
+  }
+  chooseTrack(false);
+  recording = { notes: [], start: null, timer: null };
+  updateCapture();
+  enableAudio().catch(error => {
+    console.error(error);
+    finishRecording();
+    notify('Audio is unavailable in this browser.');
+  });
+}
+
+function captureNote(index, time) {
+  if (!recording) return;
+  if (recording.start == null) {
+    recording.start = time;
+    recording.timer = setTimeout(finishRecording, takeLimits.seconds * 1000);
+    byId('capture-help').textContent = 'Play up to ' + takeLimits.seconds + ' seconds.';
+  }
+  if (time - recording.start < takeLimits.seconds) recording.notes.push({ index, time });
+  if (recording.notes.length >= takeLimits.notes || time - recording.start >= takeLimits.seconds) finishRecording();
 }
 
 async function preview(index) {
-  const target = score;
+  const target = currentScore();
   const branch = target.branches[index];
+  const session = recording;
+  const time = seconds();
   selected = index;
+  live.push({ index, time });
   branchSelect.value = index;
-  draw();
+  requestPaint();
   try {
     await enableAudio();
-    if (target !== score || selected !== index) return;
-    playBranch(context, master, branch, score.scene, context.currentTime + 0.02);
+    if (target !== currentScore()) return;
+    if (liveBus?.seed !== target.settings.seed) {
+      const previous = liveBus;
+      if (previous) setTimeout(previous.release, 6000);
+      liveBus = { ...instrumentBus(context, master, target.settings.seed), seed: target.settings.seed };
+    }
+    playBranch(context, liveBus.input, branch, target.scene, context.currentTime + 0.013);
+    if (session === recording) captureNote(index, time);
   } catch (error) {
     console.error(error);
     notify('The selected note could not be played.');
   }
 }
 
+function triggerKey(index) {
+  const branch = keyBranches[index];
+  if (!branch) return;
+  const button = byId('keys').children[index];
+  button.classList.add('active');
+  setTimeout(() => button.classList.remove('active'), 180);
+  preview(branch.index);
+}
+
 function refresh() {
-  const wasPlaying = active || playRequest;
-  playRequest = null;
-  detach();
-  renderCache = null;
-  position = 0;
-  hasPlayed = false;
-  selected = hover = null;
   const settings = { scene };
-  for (const key of controls) {
-    const input = byId(key);
-    settings[key] = Number(input.value);
-    if (labels[key]) {
-      const label = labels[key](settings[key]);
-      byId(key + '-value').textContent = label;
-      input.setAttribute('aria-valuetext', label);
-      fillRange(input);
-    }
-  }
+  for (const key of controls) settings[key] = Number(byId(key).value);
   score = compose(settings);
-  garden.setScore(score);
-  seek.max = score.duration;
-  byId('duration').textContent = clock(score.duration);
-  byId('scene-name').textContent = score.scene.name;
-  byId('branch-count').textContent = score.branches.length + ' branches';
-  document.documentElement.style.setProperty('--accent', score.scene.accent);
-  for (const button of presetButtons) button.setAttribute('aria-pressed', String(button.dataset.scene === scene));
-  updateTransport();
-  draw();
-  if (wasPlaying) notify('New composition ready. Press play to listen.');
+  chooseTrack(false);
 }
 
 async function saveWave() {
-  const target = score;
-  download.disabled = true;
+  const target = currentScore();
+  exporting = true;
+  updateCapture();
   download.querySelector('span').textContent = 'Preparing WAV…';
   try {
     const buffer = await rendered(target);
     const url = URL.createObjectURL(encodeWave(buffer));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'stillwater-' + target.settings.scene + '-' + target.settings.seed +
-      '-d' + target.settings.depth + '-a' + target.settings.angle +
-      '-l' + target.settings.taper + '-' + target.settings.tempo + 'bpm.wav';
+    const { scene: name, seed, depth, angle, taper, tempo } = target.settings;
+    link.download = target.take
+      ? 'stillwater-' + name + '-' + seed + '-take.wav'
+      : 'stillwater-' + name + '-' + seed + '-d' + depth + '-a' + angle + '-l' + taper + '-' + tempo + 'bpm.wav';
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    notify(target.scene.name + ' is ready in your downloads.');
+    notify(target.take ? 'Your take is ready in your downloads.' : target.scene.name + ' is ready in your downloads.');
   } catch (error) {
     console.error(error);
-    notify('The WAV could not be created. Try again in a recent browser.');
+    notify('The WAV could not be created.');
   } finally {
-    download.disabled = false;
-    download.querySelector('span').textContent = 'Download WAV';
+    exporting = false;
+    updateCapture();
+    download.querySelector('span').textContent = useTake ? 'Download take WAV' : 'Download WAV';
   }
 }
 
 for (const key of controls.slice(0, -1)) byId(key).addEventListener('input', refresh);
 byId('seed').addEventListener('change', event => {
   const value = event.target.valueAsNumber;
-  event.target.value = Number.isFinite(value) ? Math.max(0, Math.min(999999, Math.round(value))) : score.settings.seed;
+  event.target.value = Number.isFinite(value) ? Math.max(0, Math.min(999999, Math.round(value))) : currentScore().settings.seed;
   refresh();
 });
 byId('shuffle').addEventListener('click', () => {
-  const current = score.settings.seed;
+  const current = currentScore().settings.seed;
   byId('seed').value = (current + 1 + Math.floor(Math.random() * 999999)) % 1000000;
   refresh();
 });
@@ -312,6 +505,8 @@ for (const button of presetButtons) {
   });
 }
 playButton.addEventListener('click', play);
+recordButton.addEventListener('click', toggleRecording);
+trackButton.addEventListener('click', () => chooseTrack(!useTake));
 byId('restart').addEventListener('click', () => seekTo(0));
 seek.addEventListener('input', () => seekTo(Number(seek.value)));
 loopButton.addEventListener('click', () => {
@@ -333,29 +528,96 @@ mute.addEventListener('click', () => {
   syncVolume();
 });
 download.addEventListener('click', saveWave);
+function expandGarden(expanded) {
+  const main = document.querySelector('main');
+  main.dataset.expanded = String(expanded);
+  document.querySelector('.settings').hidden = expanded;
+  updateButton(expandButton, expanded ? 'contract' : 'expand', expanded ? 'Exit expanded garden' : 'Expand garden');
+  cursor = hover = null;
+  requestPaint();
+}
+expandButton.addEventListener('click', () => expandGarden(document.querySelector('main').dataset.expanded !== 'true'));
 byId('about').addEventListener('click', () => byId('about-dialog').showModal());
 byId('browse').addEventListener('click', () => {
-  branchSelect.replaceChildren(...score.branches.map(branch => new Option(description(branch), branch.index)));
+  branchSelect.replaceChildren(...currentScore().branches.map(branch =>
+    new Option(describe(branch) + ' · ' + noteName(branch.midi), branch.index)
+  ));
   branchSelect.value = selected ?? 0;
   byId('branch-dialog').showModal();
 });
 byId('preview-note').addEventListener('click', () => preview(Number(branchSelect.value)));
-garden.canvas.addEventListener('pointermove', event => {
-  if (event.pointerType === 'touch') return;
-  const index = garden.hit(event.clientX, event.clientY);
-  if (index === hover) return;
-  hover = index;
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.querySelector('dialog[open]') && document.querySelector('main').dataset.expanded === 'true') {
+    expandGarden(false);
+  }
+  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+      event.target.closest('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
+  const index = keys.indexOf(event.key.toLowerCase());
+  if (index >= 0) triggerKey(index);
+});
+
+function inspectPointer(event) {
+  cursor = garden.coords(event.clientX, event.clientY);
+  hover = garden.hit(cursor);
   garden.canvas.style.cursor = hover === null ? 'crosshair' : 'pointer';
-  draw();
+  requestPaint();
+}
+
+garden.canvas.addEventListener('pointerdown', event => {
+  if (!event.isPrimary || event.button !== 0) return;
+  inspectPointer(event);
+  garden.canvas.setPointerCapture(event.pointerId);
+  const now = seconds();
+  stroke = { id: event.pointerId, point: cursor, time: now, last: hover };
+  trail = [{ ...cursor, time: now }];
+  if (hover !== null) preview(hover);
 });
+garden.canvas.addEventListener('pointermove', event => {
+  if (!event.isPrimary) return;
+  inspectPointer(event);
+  if (stroke?.id !== event.pointerId) return;
+  const now = seconds();
+  trail.push({ ...cursor, time: now });
+  if (trail.length > 39) trail.shift();
+  const origin = stroke.point;
+  stroke.point = cursor;
+  if (now - stroke.time < 0.068) return;
+  const steps = Math.min(24, Math.max(1, Math.ceil(Math.hypot(cursor.x - origin.x, cursor.y - origin.y) / 8)));
+  for (let step = 1; step <= steps; step++) {
+    const fraction = step / steps;
+    const index = garden.hit({
+      x: origin.x + (cursor.x - origin.x) * fraction,
+      y: origin.y + (cursor.y - origin.y) * fraction,
+    });
+    if (index === null || index === stroke.last) continue;
+    stroke.last = index;
+    stroke.time = now;
+    preview(index);
+    break;
+  }
+});
+function endStroke(event) {
+  if (stroke?.id === event.pointerId) stroke = null;
+  if (event.pointerType === 'touch') {
+    cursor = hover = null;
+    requestPaint();
+  }
+}
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) garden.canvas.addEventListener(type, endStroke);
 garden.canvas.addEventListener('pointerleave', () => {
-  hover = null;
-  draw();
+  cursor = hover = null;
+  requestPaint();
 });
-garden.canvas.addEventListener('click', event => {
-  const index = garden.hit(event.clientX, event.clientY);
-  if (index !== null) preview(index);
-});
+window.addEventListener('pointermove', event => {
+  if (reducedMotion.matches || event.pointerType === 'touch') return;
+  lightPoint = { x: event.clientX, y: event.clientY };
+  if (lightFrame) return;
+  lightFrame = requestAnimationFrame(() => {
+    lightFrame = 0;
+    document.body.style.setProperty('--light-x', lightPoint.x + 'px');
+    document.body.style.setProperty('--light-y', lightPoint.y + 'px');
+  });
+}, { passive: true });
 reducedMotion.addEventListener('change', draw);
 
 syncVolume();

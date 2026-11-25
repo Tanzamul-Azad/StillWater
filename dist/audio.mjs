@@ -53,6 +53,20 @@ function makeSpace(context, mix, seed) {
   return reverb;
 }
 
+export function instrumentBus(context, destination, seed) {
+  const input = context.createGain();
+  const output = context.createGain();
+  const reverb = makeSpace(context, output, seed);
+  input.connect(output);
+  input.connect(reverb);
+  output.connect(destination);
+  return { input, release: () => {
+    input.disconnect();
+    reverb.disconnect();
+    output.disconnect();
+  } };
+}
+
 function roomTone(context, mix, score) {
   const random = randomFrom(score.settings.seed ^ 0x71d2);
   const frames = Math.floor(context.sampleRate * score.duration);
@@ -94,16 +108,18 @@ export async function renderScore(score) {
   mix.connect(offline.destination);
   roomTone(offline, mix, score);
 
-  const sections = score.branches.filter(branch => branch.depth === 1);
+  const sections = score.take
+    ? score.events.filter((_, index) => index === 0 || index === Math.floor(score.events.length / 2))
+    : score.branches.filter(branch => branch.depth === 1);
   const root = score.scene.root;
   voice(offline, notes, frequency(root - 12), 'sine', 0.04, 1.9, score.duration - 0.1, 0.043);
   for (const [index, branch] of sections.entries()) {
-    const end = sections[index + 1]?.time ?? score.branches.at(-1).time + 1.9;
+    const end = sections[index + 1]?.time ?? score.events.at(-1).time + 1.9;
     const release = Math.min(end - branch.time + 2.1, score.duration - branch.time - 0.1);
     voice(offline, notes, frequency(branch.midi - 12), 'sine', branch.time, 1.25, release, 0.028);
     voice(offline, notes, frequency(root + 7), 'sine', branch.time, 1.8, release, 0.015);
   }
-  for (const branch of score.branches) playBranch(offline, notes, branch, score.scene, branch.time);
+  for (const branch of score.events) playBranch(offline, notes, branch, score.scene, branch.time);
   const buffer = await offline.startRendering();
   let peak = 0;
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {

@@ -1,12 +1,12 @@
 # Stillwater demo walkthrough
 
-“Stillwater is a sound garden. Every branch you see becomes a note you can hear.”
+**Stillwater is a tree you can play. Every branch on screen is a note.**
 
-1. **0:00–0:08 · Let it play.** Press Play on Moonlit Lagoon and leave a few seconds for the audience to hear the first branches. Point to the current branch and note below the tree.
-2. **0:08–0:18 · Show what changes.** Pause, then raise Depth from 4 to 5. The branch count grows from 31 to 63. Widen Branch angle and show the tree opening across the stage.
-3. **0:18–0:32 · Make the rule audible.** Select Cedar Rain. Open Browse branches and audition the first left and right branches. Explain that their paths determine scale steps and their positions determine stereo placement.
-4. **0:32–0:45 · Finish with a composition.** Select Violet Hour, press Play, and give the new timbre a few seconds. Click Download WAV to show how the piece can be saved and shared.
+1. **0:00–0:10 · Play the canopy.** Click **Record a take** and sweep across the branching paths. Point out the stereo motion, expanding ripples and note readout. Play a couple of the keys under the tree before finishing the take.
+2. **0:10–0:24 · Listen back.** Play the recording. The same branches light up with the timing of the original gesture. Show **Download take WAV**.
+3. **0:24–0:39 · Let recursion perform.** Choose **Violet Hour**, adjust Depth and then press Play. The automated sequence visits the parent first, then the left subtree, then the right.
+4. **0:39–0:45 · Share the result.** Use the expand button to give the tree the window. Point judges to the bundled WAV and the offline entry point in the README.
 
 **Project description for the form**
 
-> Stillwater is an interactive sound garden that turns a recursive tree into ambient music. A single traversal draws and scores each branch. Depth shapes the length of the piece, left and right turns guide the melody, and branch positions determine stereo placement. Explore three soundscapes, audition individual branches, or export an original composition as a stereo WAV.
+> Stillwater is a recursive tree you can play. Every branch contributes a note, and its horizontal position places that sound in stereo. Sweep through the canopy to compose with your own timing, or hear the tree play its recursive score. The notes light their branches and send ripples across the water. Either performance can be saved as a stereo WAV.

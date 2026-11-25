@@ -1,0 +1,12 @@
+{
+  "name": "stillwater-sound-garden",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild dist/app.mjs --bundle --format=iife --target=es2022 --charset=utf8 --outfile=dist/stillwater.js",
+    "test": "node --test scripts/score.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

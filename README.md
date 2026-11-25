@@ -1,44 +1,53 @@
 # Stillwater
 
-**A recursive sound garden for Hub’s Quest, Epoch 1.**
+**A recursive tree you can play.**
 
-Stillwater turns a tree into a composition. Every branch is born from a recursive call, and every call contributes a note. Press play to watch the tree light up in the order you hear it. Select any branch to audition its note and trace its path back to the trunk.
+Sweep across the canopy and its branches sound like strings. Let the tree play its own score, or record a gesture and save the resulting music. Built for Hub’s Quest, Epoch 1.
 
-![Stillwater showing the Moonlit Lagoon tree, transport, and composition controls](submission/stillwater-preview.png)
+![The Stillwater instrument in Moonlit Lagoon, with branches suspended over a foggy pool](submission/stillwater-preview.png)
 
-[Watch the 23-second demo](submission/stillwater-demo.mp4) · [Listen to Moonlit Lagoon](submission/moonlit-lagoon.wav) · [Demo walkthrough](submission/DEMO.md)
+[Watch the demo](submission/stillwater-demo.mp4) · [Hear the recursive score](submission/moonlit-lagoon.wav) · [Hear a recorded gesture](submission/by-hand.wav) · [Demo walkthrough](submission/DEMO.md)
 
-## Run locally
+## Open the instrument
 
-With Python 3 installed, run the following command from the repository root, then open `http://127.0.0.1:8765` in a current browser.
+Open `dist/index.html` in a current browser. Keep it beside the other files in `dist/` so the instrument can load its styles, bundle and backdrop. The checked-in bundle works offline and needs no server or installation. The same directory can be deployed on any static host.
+
+## Play the tree
+
+1. **Touch or drag** across branches to play their notes. The displayed keys and **Explore branches** provide keyboard and touch alternatives.
+2. **Shape the score** with Depth, Spread, Branch length, Tempo and Seed. Switch between Moonlit Lagoon, Cedar Rain and Violet Hour for different scales, timbres and ambience.
+3. **Play** the recursive score or **Record a take** to keep up to 24 seconds of your own timing. Finish the take, then click the track name above the waveform to switch between the take and the recursive score. One take stays available for the current session.
+4. **Download WAV** to save the selected track as 44.1 kHz stereo, 16-bit PCM, including harmony, ambience and the effect tail. The transport includes seek, restart, loop and volume.
+
+## How the tree turns into music
+
+`grow()` makes a branch and schedules its note, then calls itself on two smaller branches. The terminal call contributes its note and returns. The automatic score visits the parent, the left subtree and then the right. At depth five, the same recursion makes 63 branches and 63 scheduled notes.
+
+| Part of the recursion | Musical result |
+| --- | --- |
+| Left and right turns | Distinct steps in the scene’s scale |
+| Depth and terminal calls | Quieter, shorter notes deeper in the tree and closer spacing at the tips |
+| Horizontal position | Stereo placement follows the branch |
+| The first split | Low sustained tones follow the two main subtrees |
+| Seed | Repeatable variation in melody, timing and shape |
+
+A recorded gesture reuses the branch notes and stereo positions while preserving the player’s timing and repeated notes. Branches and waveforms follow the selected score during playback. A branch sound sets off a surface ripple and a brief reflection of its color around the screen.
+
+## Technology
+
+- **Canvas 2D and Pointer Events** draw the tree and map a pointer stroke to branch notes. Mouse, touch and the displayed keys share the same instrument. [Pointer Events specification](https://www.w3.org/TR/pointerevents3/)
+- **WebGL 2 and GLSL** calculate overlapping ripples, mist and pointer light. A Canvas renderer covers browsers with WebGL disabled. Reduced motion keeps the note feedback and removes moving effects. [WebGL 2 specification](https://registry.khronos.org/webgl/specs/latest/2.0/)
+- **Web Audio** synthesizes every voice, the filtered water or rain bed, and seeded stereo reverb. Offline rendering provides the waveform, playback buffer and exported WAV for each score. Audio processing stays in the browser. [Web Audio specification](https://www.w3.org/TR/webaudio/)
+- **esbuild** bundles the browser modules at build time, with browser APIs providing the runtime. The low-light lagoon backdrop was created for Stillwater with ImageGen. [esbuild documentation](https://esbuild.github.io/)
+
+## Develop and verify
+
+With Node.js installed, run the commands below from the repository root.
 
 ```sh
-python -m http.server 8765 --bind 127.0.0.1 --directory dist
+npm ci
+npm test
+npm run build
 ```
 
-`dist/` is the complete static site. It can be served from a subpath and needs no build step, network services, external fonts, or audio samples. Web Audio playback starts after a user action.
-
-## Play and shape a composition
-
-1. Start with **Moonlit Lagoon**, **Cedar Rain**, or **Violet Hour**. Each has its own scale, instrument and ambient texture.
-2. Adjust **Depth**, **Branch angle**, **Branch length**, or **Tempo**. The garden redraws immediately. Set a **Seed** to recall a variation or use the dice to discover another one.
-3. Press **Play**. Use the timeline, restart, loop and volume controls to listen at your own pace. **Browse branches** provides a keyboard-accessible alternative to selecting the tree directly.
-4. Choose **Download WAV** to save the current composition as stereo 44.1 kHz, 16-bit PCM. Export includes the complete piece and its reverb tail at the mastered level. Playback volume and loop are listening controls.
-
-## How the recursion sounds
-
-`grow()` creates a branch, schedules its note, and calls itself on two shorter branches. At the selected depth, it schedules the terminal note and returns. The pre-order walk plays the trunk, then the left subtree, then the right. Depth four makes 31 notes, and depth six makes 127.
-
-| What changes in the tree | What changes in the sound |
-| --- | --- |
-| Left and right turns | Different steps in the preset’s scale |
-| Depth and terminal calls | Softer, shorter notes further from the trunk and tighter spacing at the tips |
-| Horizontal position | Stereo placement, so the sound follows the branch |
-| First split | Sustained harmony follows the two main subtrees |
-| Seed | Reproducible changes to pitch variation, timing and shape |
-
-Soft attacks, limited overtones, a seeded stereo reverb and a filtered room tone keep the piece quiet and spacious. The tree and renderer share one score, so the visible branches, transport, and exported audio follow the same event order.
-
-## Verify the score
-
-Run `node --test scripts/score.test.mjs` with Node.js. The checks cover termination, parent–child geometry, traversal order, deterministic generation, and the WAV container. The interface also supports reduced motion without removing feedback about which branch is sounding.
+The tests cover termination, parent–child geometry, traversal order, seed repeatability, gesture timing and WAV encoding. For a local HTTP preview with Python 3, run `python -m http.server 8765 --bind 127.0.0.1 --directory dist` and open `http://127.0.0.1:8765`.

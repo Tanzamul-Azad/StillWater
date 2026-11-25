@@ -1,18 +1,18 @@
 export const scenes = {
   lagoon: {
-    name: 'Moonlit Lagoon', description: 'Glass tones · a slow tide',
-    depth: 4, angle: 32, taper: 72, tempo: 72, seed: 173,
+    name: 'Moonlit Lagoon', scaleName: 'D major pentatonic',
+    depth: 5, angle: 34, taper: 75, tempo: 72, seed: 173,
     root: 50, scale: [0, 2, 4, 7, 9], wave: 'sine',
     hue: 162, accent: '#a8f0cf', overtones: [1, 2, 3],
   },
   cedar: {
-    name: 'Cedar Rain', description: 'Warm wood · soft rain',
+    name: 'Cedar Rain', scaleName: 'C suspended pentatonic',
     depth: 5, angle: 24, taper: 70, tempo: 80, seed: 617,
     root: 48, scale: [0, 2, 5, 7, 9], wave: 'triangle',
     hue: 92, accent: '#d4e5a5', overtones: [1, 2.01, 4.07],
   },
   orchid: {
-    name: 'Violet Hour', description: 'Soft bells · open air',
+    name: 'Violet Hour', scaleName: 'F minor pentatonic',
     depth: 4, angle: 41, taper: 73, tempo: 64, seed: 312,
     root: 53, scale: [0, 3, 5, 7, 10], wave: 'sine',
     hue: 265, accent: '#dcc6ff', overtones: [1, 2.76, 4.07],
@@ -81,7 +81,17 @@ export function compose(settings) {
 
   grow({ depth: 0, parent: null, path: '', x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
   const last = branches.at(-1);
-  return { settings, scene, branches, duration: last.time + last.decay + 2.35 };
+  return { settings, scene, branches, events: branches, duration: last.time + last.decay + 2.35 };
+}
+
+export const takeLimits = { seconds: 24, notes: 96 };
+
+export function composeTake(score, notes) {
+  if (!notes.length) return null;
+  const first = notes[0].time;
+  const events = notes.map(note => ({ ...score.branches[note.index], time: 0.24 + note.time - first }));
+  const duration = Math.max(...events.map(event => event.time + event.decay)) + 2.2;
+  return { ...score, events, duration, take: true };
 }
 
 export function clock(seconds) {

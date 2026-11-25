@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeWave } from '../dist/audio.mjs';
-import { compose, scenes } from '../dist/score.mjs';
+import { compose, composeTake, scenes } from '../dist/score.mjs';
 
 for (const scene of Object.keys(scenes)) {
   test(`${scene} produces a complete, ordered binary tree`, () => {
@@ -37,6 +37,18 @@ test('the seed is reproducible, and geometry parameters change the score', () =>
   assert.notEqual(original.branches[1].pan, compose({ ...settings, angle: 55 }).branches[1].pan);
   assert.notEqual(original.branches[1].pan, compose({ ...settings, taper: 54 }).branches[1].pan);
   assert.ok(compose({ ...settings, tempo: 48 }).duration > original.duration);
+});
+
+test('a recorded take keeps gesture order, pauses, repeated notes and a full release', () => {
+  const settings = { ...scenes.lagoon, scene: 'lagoon' };
+  const tree = compose(settings);
+  assert.equal(composeTake(tree, []), null);
+  const take = composeTake(tree, [{ index: 4, time: 10 }, { index: 0, time: 10.25 }, { index: 4, time: 11.75 }]);
+  assert.equal(take.branches, tree.branches);
+  assert.equal(take.settings, tree.settings);
+  assert.deepEqual(take.events.map(event => event.midi), [tree.branches[4].midi, tree.branches[0].midi, tree.branches[4].midi]);
+  assert.deepEqual(take.events.map(event => Math.round(event.time * 100)), [24, 49, 199]);
+  assert.ok(take.duration > Math.max(...take.events.map(event => event.time + event.decay)));
 });
 
 test('WAV export stores an interleaved stereo, 16-bit PCM stream', async () => {

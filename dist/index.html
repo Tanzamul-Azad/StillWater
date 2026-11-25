@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a1514">
+  <meta name="theme-color" content="#081119">
   <meta name="description" content="Grow a recursive tree and listen as its branches become a composition.">
   <title>Stillwater — Recursive Sound Garden</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1715'/%3E%3Cg transform='rotate(-23 16 16)' fill='none' stroke='%23a8f0cf'%3E%3Cellipse cx='16' cy='16' rx='12' ry='7'/%3E%3Cellipse cx='16' cy='16' rx='8' ry='4.5'/%3E%3Cellipse cx='16' cy='16' rx='3' ry='1.5' fill='%23a8f0cf'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
-  <script type="module" src="app.mjs"></script>
+  <script defer src="stillwater.js"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -23,47 +23,51 @@
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
     <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></symbol>
     <symbol id="icon-wave" viewBox="0 0 24 24"><path d="M3 12h3l2-5 3.5 10L15 7l2 5h4"/></symbol>
+    <symbol id="icon-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></symbol>
+    <symbol id="icon-contract" viewBox="0 0 24 24"><path d="M4 9h5V4m11 5h-5V4M4 15h5v5m11-5h-5v5"/></symbol>
   </svg>
 
   <header class="site-header">
     <div class="header-inner">
-      <a class="wordmark" href="./" aria-label="Stillwater home"><span class="brand-mark" aria-hidden="true"></span>Stillwater</a>
-      <button class="text-button" id="about" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg>How it works</button>
+      <a class="wordmark" href="index.html" aria-label="Stillwater home"><span class="brand-mark" aria-hidden="true"></span>Stillwater</a>
+      <button class="text-button" id="about" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg>Field guide</button>
     </div>
   </header>
 
   <main>
-    <section class="intro" aria-labelledby="title">
-      <div class="intro-copy">
-        <p class="eyebrow">An interactive sound garden</p>
-        <h1 id="title">Listen to a tree <em>grow.</em></h1>
-        <p class="lede">Shape a branching tree and let each new limb become a note.</p>
-      </div>
-      <p class="headphones"><svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg>Best with headphones</p>
-    </section>
-
     <div class="workbench">
       <section class="stage" aria-label="Sound garden and playback">
         <div class="art" id="art">
-          <canvas id="garden" role="img" aria-label="A branching tree that lights up as its notes play"></canvas>
-          <div class="art-top">
-            <div class="scene-title"><span class="scene-dot" aria-hidden="true"></span><span id="scene-name">Moonlit Lagoon</span></div>
-            <div class="branch-count" id="branch-count">31 branches</div>
+          <canvas id="water" aria-hidden="true" hidden></canvas>
+          <canvas id="garden" role="img" aria-label="Recursive tree instrument. Drag across its branches to play notes, or use the keys below."></canvas>
+          <div class="stage-heading">
+            <p class="eyebrow">A recursive sound garden</p>
+            <h1 id="title">Play the<br><em>branches.</em></h1>
+            <p class="lede">Drag through the canopy.</p>
+          </div>
+          <div class="stage-scene">
+            <span id="scene-name">Moonlit Lagoon</span>
+            <span id="scene-scale">D major pentatonic</span>
           </div>
           <div class="art-bottom">
-            <p id="branch-detail">Select a branch to hear its note.</p>
-            <button class="branch-picker" id="browse" type="button">Browse branches</button>
+            <div class="branch-readout"><span id="branch-note" aria-hidden="true">♪</span><p id="branch-detail">Branch notes</p></div>
+            <div class="stage-tools">
+              <button class="branch-picker" id="browse" type="button">Explore branches</button>
+              <button class="icon-button expand-button" id="expand" type="button" aria-label="Expand garden" title="Expand garden"><svg class="icon" aria-hidden="true"><use href="#icon-expand"/></svg></button>
+            </div>
           </div>
         </div>
 
         <div class="transport">
           <button type="button" class="play-button" id="play" aria-label="Play composition"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
-          <button type="button" class="icon-button reset-button" id="restart" aria-label="Restart composition" title="Restart composition"><svg class="icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
           <div class="timeline">
+            <div class="timeline-top"><button type="button" id="track" class="track-button" disabled aria-label="Switch between recursive score and recorded take">Recursive score</button><span><span id="elapsed">0:00</span><span class="time-divider"> / </span><span id="duration">0:33</span></span></div>
             <label class="sr-only" for="seek">Playback position</label>
-            <input id="seek" class="seek" type="range" min="0" max="18" value="0" step="0.01">
-            <div class="time-row"><span id="elapsed">0:00</span><span id="duration">0:18</span></div>
+            <div class="wave-track"><div id="meter" class="meter" aria-hidden="true"></div><input id="seek" class="seek" type="range" min="0" max="33" value="0" step="0.01"></div>
           </div>
+          <button type="button" class="icon-button reset-button" id="restart" aria-label="Restart composition" title="Restart composition"><svg class="icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
           <button type="button" class="icon-button" id="loop" aria-label="Loop composition" aria-pressed="false" title="Loop composition"><svg class="icon" aria-hidden="true"><use href="#icon-loop"/></svg></button>
           <div class="volume">
             <button type="button" class="icon-button" id="mute" aria-label="Mute" title="Mute"><svg class="icon" aria-hidden="true"><use href="#icon-volume"/></svg></button>
@@ -74,28 +78,35 @@
       </section>
 
       <section class="settings" aria-labelledby="sculpt-title">
-        <h2 id="sculpt-title">Shape the sound</h2>
-        <p class="panel-intro">A few changes grow a different piece.</p>
+        <section class="presets" aria-labelledby="presets-title">
+          <h2 id="presets-title">Soundscape</h2>
+          <div class="preset-grid" role="group" aria-label="Choose a soundscape">
+            <button class="preset lagoon" type="button" data-scene="lagoon" aria-pressed="true" aria-label="Moonlit Lagoon"><span class="swatch" aria-hidden="true"></span><span>Lagoon</span></button>
+            <button class="preset cedar" type="button" data-scene="cedar" aria-pressed="false" aria-label="Cedar Rain"><span class="swatch" aria-hidden="true"></span><span>Cedar</span></button>
+            <button class="preset orchid" type="button" data-scene="orchid" aria-pressed="false" aria-label="Violet Hour"><span class="swatch" aria-hidden="true"></span><span>Violet</span></button>
+          </div>
+        </section>
+        <div class="panel-label"><h2 id="sculpt-title">Tree controls</h2><span id="branch-count" class="branch-count">63 branches</span></div>
         <div class="sliders">
           <div class="setting">
-            <div class="setting-label"><label for="depth">Depth</label><output for="depth" id="depth-value">4 levels</output></div>
-            <input id="depth" type="range" min="1" max="6" step="1" value="4" aria-describedby="depth-help">
-            <p id="depth-help">How many times the branches split.</p>
+            <div class="setting-label"><label for="depth">Depth</label><output for="depth" id="depth-value">5 levels</output></div>
+            <input id="depth" type="range" min="1" max="6" step="1" value="5" aria-describedby="depth-help">
+            <p id="depth-help" class="sr-only">How many times the branches split.</p>
           </div>
           <div class="setting">
-            <div class="setting-label"><label for="angle">Branch angle</label><output for="angle" id="angle-value">32°</output></div>
-            <input id="angle" type="range" min="14" max="55" step="1" value="32" aria-describedby="angle-help">
-            <p id="angle-help">A wider angle opens up the stereo field.</p>
+            <div class="setting-label"><label for="angle">Spread</label><output for="angle" id="angle-value">34°</output></div>
+            <input id="angle" type="range" min="14" max="55" step="1" value="34" aria-describedby="angle-help">
+            <p id="angle-help" class="sr-only">A wider branch angle opens up the stereo field.</p>
           </div>
           <div class="setting">
-            <div class="setting-label"><label for="taper">Branch length</label><output for="taper" id="taper-value">72%</output></div>
-            <input id="taper" type="range" min="54" max="85" step="1" value="72" aria-describedby="taper-help">
-            <p id="taper-help">Each child’s length relative to its parent.</p>
+            <div class="setting-label"><label for="taper">Branch length</label><output for="taper" id="taper-value">75%</output></div>
+            <input id="taper" type="range" min="54" max="85" step="1" value="75" aria-describedby="taper-help">
+            <p id="taper-help" class="sr-only">Each child’s length relative to its parent.</p>
           </div>
           <div class="setting">
             <div class="setting-label"><label for="tempo">Tempo</label><output for="tempo" id="tempo-value">72 BPM</output></div>
             <input id="tempo" type="range" min="48" max="104" step="1" value="72" aria-describedby="tempo-help">
-            <p id="tempo-help">The pace at which notes unfold.</p>
+            <p id="tempo-help" class="sr-only">The pace at which notes unfold in the automatic sequence.</p>
           </div>
         </div>
         <div class="seed-row">
@@ -103,17 +114,18 @@
           <input id="seed" type="number" min="0" max="999999" step="1" value="173" inputmode="numeric">
           <button class="icon-button seed-button" id="shuffle" type="button" aria-label="Randomize seed" title="Randomize seed"><svg class="icon" aria-hidden="true"><use href="#icon-dice"/></svg></button>
         </div>
+        <section class="capture" aria-labelledby="capture-title">
+          <div class="panel-label"><h2 id="capture-title">Your take</h2><output id="capture-state" class="capture-state" aria-live="off">Ready</output></div>
+          <button class="record-button" id="record" type="button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-record"/></svg><span>Record a take</span></button>
+          <p id="capture-help">Play the tree or use the note keys.</p>
+        </section>
         <button class="download-button" id="download" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg><span>Download WAV</span></button>
       </section>
     </div>
-
-    <section class="presets" aria-labelledby="presets-title">
-      <h2 id="presets-title">Soundscapes</h2>
-      <div class="preset-grid" role="group" aria-label="Choose a soundscape">
-        <button class="preset lagoon" type="button" data-scene="lagoon" aria-pressed="true"><span class="swatch" aria-hidden="true"></span><span><strong>Moonlit Lagoon</strong><small>Glass tones · a slow tide</small></span><span class="preset-indicator" aria-hidden="true"></span></button>
-        <button class="preset cedar" type="button" data-scene="cedar" aria-pressed="false"><span class="swatch" aria-hidden="true"></span><span><strong>Cedar Rain</strong><small>Warm wood · soft rain</small></span><span class="preset-indicator" aria-hidden="true"></span></button>
-        <button class="preset orchid" type="button" data-scene="orchid" aria-pressed="false"><span class="swatch" aria-hidden="true"></span><span><strong>Violet Hour</strong><small>Soft bells · open air</small></span><span class="preset-indicator" aria-hidden="true"></span></button>
-      </div>
+    <section class="keyboard" aria-label="Play branches with a keyboard">
+      <div class="keys-label"><svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg><span>Play the scale</span></div>
+      <div id="keys" class="keys" role="group" aria-label="Playable branch notes"></div>
+      <p class="headphones">Best with headphones</p>
     </section>
 
     <footer>Stillwater <span aria-hidden="true">·</span> Built for <span>Hub’s Quest, Epoch 1</span></footer>
@@ -121,14 +133,15 @@
 
   <dialog id="about-dialog" aria-labelledby="about-title">
     <form method="dialog"><button class="icon-button dialog-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></form>
-    <h2 id="about-title">How it works</h2>
+    <h2 id="about-title">Field guide</h2>
     <p>One branch grows two shorter branches. Each new branch does the same until it reaches the chosen depth. A tree with four levels of splitting has 31 branches, including the trunk.</p>
     <p>The music visits a parent, then its left subtree, then its right. The two paths choose different steps on the scale. A branch to the left pans left, terminal branches play closer together, and the first branches lend their notes to the low, sustained harmony.</p>
-    <p>Change the seed to vary the branching and melody. Use the same soundscape, controls and seed to grow the same piece again.</p>
+    <p>Drag across the canopy, tap a branch, or play the displayed keys. Record a take to keep up to 24 seconds of your playing. When a take is ready, choose between it and the recursive score above the timeline.</p>
+    <p>Use the same soundscape, controls and seed to grow the same tree again.</p>
   </dialog>
   <dialog id="branch-dialog" aria-labelledby="browse-title">
     <form method="dialog"><button class="icon-button dialog-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></form>
-    <h2 id="browse-title">Browse branches</h2>
+    <h2 id="browse-title">Explore branches</h2>
     <p>The branches appear in playback order. Choose one to hear its note on its own.</p>
     <label for="branch-select">Branch</label>
     <select id="branch-select"></select>
