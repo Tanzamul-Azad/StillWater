@@ -34,6 +34,8 @@ The generator visits a branch, records its geometry and schedules a note. A non-
 
 The pointer selects actual branch geometry. A recorded gesture reuses those branch IDs and their assigned notes while preserving the player’s timing. The Web Audio performance buffer drives playback and WAV export. Rendered sample peaks fill in the waveform once the audio is ready.
 
+## Architecture
+
 ```mermaid
 flowchart LR
   Controls["Tree controls and seed"] --> Tree["Recursive branches"]
