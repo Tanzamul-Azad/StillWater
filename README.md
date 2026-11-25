@@ -1,50 +1,72 @@
 # Stillwater
 
-**A recursive tree you can play.**
+**Play a recursive tree. Turn the shape of a branch into sound.**
 
-Sweep across the canopy and its branches sound like strings. Let the tree play its own score, or record a gesture and save the resulting music. Built for Hub’s Quest, Epoch 1.
+Stillwater is a browser instrument for *Recursive Soundscapes*, Hub’s Quest Epoch 1. One recursive function creates both the tree you see and the notes you hear. Draw a melody by dragging across branches, or listen to the tree perform its own score.
 
-![The Stillwater instrument in Moonlit Lagoon, with branches suspended over a foggy pool](submission/stillwater-preview.png)
+**Solo entry by Tanzamul-Azad**
 
-[Watch the demo](submission/stillwater-demo.mp4) · [Hear the recursive score](submission/moonlit-lagoon.wav) · [Hear a recorded gesture](submission/by-hand.wav) · [Demo walkthrough](submission/DEMO.md)
+[Play online](https://tanzamul-azad.github.io/StillWater/) · [Watch the 30-second demo](submission/stillwater-demo.mp4) · [Hear the automatic score](submission/moonlit-lagoon.wav) · [Hear a recorded take](submission/by-hand.wav) · [AI development log](AI_LOG.md)
 
-[AI development log](AI_LOG.md)
+![Stillwater screenshot showing a luminous tree over water, a waveform, branch keys and recursion controls](submission/stillwater-preview.png)
 
-## Open the instrument
+## Try it
 
-Open `dist/index.html` in a current browser. Keep it beside the other files in `dist/` so the instrument can load its styles, bundle and backdrop. The checked-in bundle works offline and needs no server or installation. The same directory can be deployed on any static host.
+1. **Play the branches.** Drag across the canopy with a mouse or finger. The note keys provide another way to play the same branches.
+2. **Record your take.** Press the red record button, play a few notes, then press stop. The take captures note order, timing and repeated notes.
+3. **Hear the recursion.** In **Explore branches**, choose any branch and select **Play path**. Hear each ancestor from the trunk to that branch while the corresponding path lights up.
+4. **Shape and export.** Change depth, spread, branch length, tempo or seed. Play the generated score, switch to your recorded take, and export either as a 44.1 kHz stereo WAV.
 
-## Play the tree
+Moonlit Lagoon, Cedar Rain and Violet Hour each set a different scale, timbre and ambience. A take can capture up to 24 seconds and 96 notes. The most recent take stays available while the page is open.
 
-1. **Touch or drag** across branches to play their notes. The displayed keys and **Explore branches** provide keyboard and touch alternatives. Use **Play path** to hear the melody from the trunk to a selected branch.
-2. **Shape the score** with Depth, Spread, Branch length, Tempo and Seed. Switch between Moonlit Lagoon, Cedar Rain and Violet Hour for different scales, timbres and ambience.
-3. **Play** the recursive score or tap the red record button on the garden to keep up to 24 seconds of your own timing. Finish the take, then click the track name above the waveform to switch between the take and the recursive score. One take stays available for the current session. The Field guide includes a switch for letter shortcuts.
-4. **Download WAV** to save the selected track as 44.1 kHz stereo, 16-bit PCM, including harmony, ambience and the effect tail. The transport includes seek, restart, loop and volume.
+## How the recursion becomes music
 
-## How the tree turns into music
+The generator visits a branch, records its geometry and schedules a note. A non-terminal branch calls the generator for its left and right children at a reduced length. A terminal branch ends that call. The automatic performance uses pre-order traversal. Depth five produces **63 branches and 63 notes**, and the maximum depth of six produces **127**.
 
-`grow()` makes a branch and schedules its note, then calls itself on two smaller branches. The terminal call contributes its note and returns. The automatic score visits the parent, the left subtree and then the right. At depth five, the same recursion makes 63 branches and 63 scheduled notes.
-
-| Part of the recursion | Musical result |
+| Model input or property | Effect on the composition |
 | --- | --- |
-| Left and right turns | Distinct steps in the scene’s scale |
-| Depth and terminal calls | Quieter, shorter notes deeper in the tree and closer spacing at the tips |
-| Horizontal position | Stereo placement follows the branch |
-| The first split | Low sustained tones follow the two main subtrees |
-| Seed | Repeatable variation in melody, timing and shape |
+| Left and right turns | Different steps in the scene’s scale |
+| Branch depth | Quieter, shorter notes toward the tips |
+| Terminal call | Closer note spacing |
+| Horizontal position | Stereo placement |
+| The first split | Sustained harmony follows the two main subtrees |
+| Seed | Repeatable variation in shape, pitch and timing |
 
-A recorded gesture reuses the branch notes and stereo positions while preserving the player’s timing and repeated notes. Branches and waveforms follow the selected score during playback. A branch sound sets off a surface ripple and a brief reflection of its color around the screen.
+The pointer selects actual branch geometry. A recorded gesture reuses those branch IDs and their assigned notes while preserving the player’s timing. The Web Audio performance buffer drives playback and WAV export. Rendered sample peaks fill in the waveform once the audio is ready.
 
-## Technology
+```mermaid
+flowchart LR
+  Controls["Tree controls and seed"] --> Tree["Recursive branches"]
+  Tree --> View["Canvas tree and WebGL water"]
+  Tree --> Auto["Automatic score"]
+  View --> Gesture["Pointer and keyboard notes"]
+  Gesture --> Live["Live Web Audio"]
+  Gesture --> Take["Recorded score"]
+  Auto --> Render["Offline Web Audio render"]
+  Take --> Render
+  Render --> Transport["Player and waveform"]
+  Render --> WAV["Stereo WAV export"]
+```
 
-- **Canvas 2D and Pointer Events** draw the tree and map a pointer stroke to branch notes. Mouse, touch and the displayed keys share the same instrument. [Pointer Events specification](https://www.w3.org/TR/pointerevents3/)
-- **WebGL 2 and GLSL** calculate overlapping ripples, mist and pointer light. A Canvas renderer covers browsers with WebGL disabled. Reduced motion keeps the note feedback and removes moving effects. [WebGL 2 specification](https://registry.khronos.org/webgl/specs/latest/2.0/)
-- **Web Audio** synthesizes every voice, the filtered water or rain bed, and seeded stereo reverb. Offline rendering provides the waveform, playback buffer and exported WAV for each score. Audio processing stays in the browser. [Web Audio specification](https://www.w3.org/TR/webaudio/)
-- **esbuild** bundles the browser modules at build time, with browser APIs providing the runtime. The low-light lagoon backdrop was created for Stillwater with ImageGen. [esbuild documentation](https://esbuild.github.io/)
+## Implementation
 
-## Develop and verify
+| Path | Responsibility |
+| --- | --- |
+| [`src/score.mjs`](src/score.mjs) | Seeded recursion, geometry, note events and recorded takes |
+| [`src/app.mjs`](src/app.mjs) | Pointer and keyboard input, recording, transport and downloads |
+| [`src/garden.mjs`](src/garden.mjs), [`src/water.mjs`](src/water.mjs) | Canvas hit testing and branch rendering, WebGL effects with a Canvas fallback |
+| [`src/audio.mjs`](src/audio.mjs) | Synthesized voices, ambience, stereo reverb and PCM encoding |
+| [`dist/`](dist) | Prebuilt static site and offline entry point |
+| [`scripts/score.test.mjs`](scripts/score.test.mjs) | Tests for recursion, take timing, branch paths and WAV encoding |
+| [`submission/`](submission) | Demo video, WAV samples, screenshot and judging walkthrough |
 
-With Node.js installed, run the commands below from the repository root.
+Canvas keeps branch picking aligned with the rendered curves. WebGL handles mist and overlapping ripples at a lower render resolution while the tree remains sharp. Reduced motion removes those effects while preserving note feedback. The audio engine synthesizes the voices, ambience and reverb locally. The lagoon backdrop was created for this project with ImageGen. [Pointer Events](https://www.w3.org/TR/pointerevents3/) · [WebGL 2](https://registry.khronos.org/webgl/specs/latest/2.0/) · [Web Audio](https://www.w3.org/TR/webaudio/)
+
+## Run and verify
+
+For the quickest offline demo, download the [submission package](https://github.com/Tanzamul-Azad/StillWater/releases/latest), extract it, and open `dist/index.html` in a current browser. Keep its sibling files in place.
+
+For development with Node.js 22 or later, run these commands from the repo root.
 
 ```sh
 npm ci
@@ -52,4 +74,6 @@ npm test
 npm run build
 ```
 
-The tests cover termination, parent–child geometry, traversal order, seed repeatability, gesture timing and WAV encoding. For a local HTTP preview with Python 3, run `python -m http.server 8765 --bind 127.0.0.1 --directory dist` and open `http://127.0.0.1:8765`.
+The GitHub Pages workflow runs the tests, rebuilds the bundle and checks it against the committed copy before deploying `dist/`. The seven unit tests cover tree termination, parent–child geometry, traversal order, seed repeatability, recorded timing, branch paths and WAV encoding. Browser checks covered Chrome, Edge, touch emulation, offline WAV export and WebGL recovery or fallback. The 127-note score and 96-note take tested without clipping.
+
+[Judging walkthrough](submission/DEMO.md) · [Source and deliverables](https://github.com/Tanzamul-Azad/StillWater)

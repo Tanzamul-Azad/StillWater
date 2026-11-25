@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { encodeWave } from '../dist/audio.mjs';
-import { branchPath, compose, composeTake, scenes } from '../dist/score.mjs';
+import { encodeWave } from '../src/audio.mjs';
+import { branchPath, compose, composeTake, scenes } from '../src/score.mjs';
 
 for (const scene of Object.keys(scenes)) {
   test(`${scene} produces a complete, ordered binary tree`, () => {

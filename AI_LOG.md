@@ -1,6 +1,6 @@
 # Stillwater AI development log
 
-Source: the original Codex conversation for Stillwater. This snapshot ends with the request to create this file and Codex's first reply to that request.
+Source: the original Codex conversation for Stillwater. This snapshot runs through the repository preparation update before publication.
 
 Prompts and user-facing replies are reproduced in order, in their original languages. Consecutive prompts can share a reply. Personal asides requested for removal are marked `[Personal aside redacted]`. Tool output and internal reasoning are outside this transcript.
 
@@ -441,4 +441,47 @@ log lrakho properly
 
 ~~~~
 `AI_LOG.md` বানাচ্ছি। টেকনিক্যাল প্রম্পট ও উত্তরগুলো যেমন লেখা হয়েছিল তেমনই রাখব। যে ব্যক্তিগত কথাগুলো তুমি বাদ দিতে বলেছ, সেখানে বাদ দেওয়ার চিহ্ন থাকবে।
+~~~~
+
+### Codex final reply
+
+~~~~
+[AI_LOG.md](G:/hack/stillwater/AI_LOG.md) তৈরি করে [জমার ZIP](G:/hack/Stillwater-Epoch-1.zip)-এ যোগ করেছি। ২১টি প্রম্পট ও ৩০টি উত্তর মূল ভাষা ও ক্রমে রেখেছি। দুইটি ব্যক্তিগত লাইন `[Personal aside redacted]` দিয়ে চিহ্নিত করেছি। ZIP-এর কপিটিও মিলিয়ে দেখেছি।
+
+লোকাল কমিট `0e900e1`। রিড্যাকশনসহ লগ আয়োজকেরা গ্রহণ করবেন কি না, সেটা এখনও নিশ্চিত নয়।
+~~~~
+
+## Prompt 22
+
+~~~~
+[https://github.com/Tanzamul-Azad/StillWater.git](https://github.com/Tanzamul-Azad/StillWater.git)
+repo&#x20;
+shundor moto organize koro publish and submitttable kore dao
+Author only ami Tanzamul-Azad (i.m.tanjamul@gmail.com), onno keu claude or Codex jeno na thake contributor
+
+~~~~
+
+## Prompt 23
+
+~~~~
+readme ta technical way te hackathon worthy vabe shajaba
+
+~~~~
+
+### Codex reply to prompts 22, 23
+
+~~~~
+Stillwater-এর GitHub repo আগে দেখে নিচ্ছি। তারপর সোর্স, রান করার ফাইল, ডেমো ও AI লগ গুছিয়ে টেকনিক্যাল README লিখব। প্রকাশের কমিটে তোমার দেওয়া নাম ও ইমেইল ব্যবহার করব। AI ব্যবহারের রেকর্ড থাকবে `AI_LOG.md`-তে।
+~~~~
+
+### Codex progress update
+
+~~~~
+রিপোজিটরিটা পাবলিক ও খালি। প্রকাশের অনুমতি আছে, আর তোমার দেওয়া ইমেইল GitHub অ্যাকাউন্টে ভেরিফায়েড। প্রথম push-এর আগেই লোকাল কমিটগুলোর লেখক-তথ্য ঠিক করছি, যাতে কাজের ইতিহাস রেখেও GitHub-এ সব কমিট তোমার নামে যায়।
+~~~~
+
+### Codex progress update
+
+~~~~
+README-তে এখন তিনটা জিনিস সামনে আছে: বিচারকের দ্রুত ট্রাই করার পথ, রিকার্সন থেকে সুর তৈরির ম্যাপ, আর টেস্ট ও ডেলিভারেবলের লিংক। সোর্স `src/`-তে আর রান করার ফাইল `dist/`-তে রেখেছি। এই কাঠামোতে সাতটা লোকাল টেস্ট পাস করেছে।
 ~~~~

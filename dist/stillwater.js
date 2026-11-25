@@ -1,5 +1,5 @@
 (() => {
-  // dist/score.mjs
+  // src/score.mjs
   var scenes = {
     lagoon: {
       name: "Moonlit Lagoon",
@@ -133,7 +133,7 @@
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
   }
 
-  // dist/audio.mjs
+  // src/audio.mjs
   var sampleRate = 44100;
   function voice(context2, destination, hz, wave, start2, attack, duration, level) {
     const tone = context2.createOscillator();
@@ -300,7 +300,7 @@
     return new Blob([bytes], { type: "audio/wav" });
   }
 
-  // dist/water.mjs
+  // src/water.mjs
   var vertexSource = `#version 300 es
 void main() {
   vec2 point = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -459,7 +459,7 @@ void main() {
     }
   };
 
-  // dist/garden.mjs
+  // src/garden.mjs
   var TAU = Math.PI * 2;
   var tint = (hue, light, alpha) => "hsla(" + hue + ", 79%, " + light + "%, " + alpha + ")";
   function halo(ctx, x, y, radius, hue, strength) {
@@ -790,7 +790,7 @@ void main() {
     }
   };
 
-  // dist/app.mjs
+  // src/app.mjs
   var byId = (id) => document.getElementById(id);
   var reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   var controls = ["depth", "angle", "taper", "tempo", "seed"];
