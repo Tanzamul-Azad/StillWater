@@ -1,12 +1,18 @@
-# Stillwater demo walkthrough
+# Stillwater judging walkthrough (2 minutes)
 
-**Stillwater is a tree you can play. Every branch on screen is a note.**
+**Stillwater lets you hear the call stack.** One recursive function grows a tree, and each call is a branch, a span of time and a voice.
 
-1. **0:00–0:10 · Play the canopy.** Tap the red record button and sweep across the branching paths. Point out the stereo motion, expanding ripples and note readout.
-2. **0:10–0:24 · Play a path and listen back.** Open **Explore branches**, choose a branch and press **Play path**. Finish recording, replay the take and show **Download take WAV**.
-3. **0:24–0:39 · Let recursion perform.** Choose **Violet Hour**, adjust Depth and then press Play. The automated sequence visits the parent first, then the left subtree, then the right.
-4. **0:39–0:45 · Share the result.** Use the expand button to give the tree the window. Point judges to the bundled WAV and the offline entry point in the README.
+1. **Open the [live site](https://tanzamul-azad.github.io/StillWater/) with headphones and press *Play the score*.** The tree grows in call order, then the music starts. The low drone is the trunk call and the quick bells are the leaf calls.
+2. **Watch the call stack panel and the timeline.** The panel lists the `grow()` frames that are running now. Each frame's bar fills at the speed of its call, and a bead moves along every active branch. The timeline under the tree is the recursion's time split, one row per level.
+3. **Move *Sway* and *Spread*.** The rhythm, the melody and the tree change together without stopping the music.
+4. **Choose *Prune* and tap a large branch.** It becomes a base case: its voice holds and the levels above it fall silent. Tap again to regrow it.
+5. **Double-click a branch, or use *Explore → Listen inside*.** That subtree becomes a whole piece. Choose *Whole tree* to go back.
+6. **Type your name into *Seed*.** You get your own tree. For a melody you can recognize, open *Plant a melody*, try the built-in example, and choose *Grow tree*. The detected phrase plays at the outer branches.
+7. **Press the calm-mode button.** Full screen, the interface fades, and the breathing guide follows the left and right calls. Turn on *Drift and repeat* to hear the tree evolve.
+8. **Open *Export & record*.** Save a WAV, a MIDI with one track per level, a postcard, a link, or a recording of everything you hear.
 
 **Project description for the form**
 
-> Stillwater is a recursive tree you can play. Every branch contributes a note, and its horizontal position places that sound in stereo. Sweep through the canopy to compose with your own timing, or hear the tree play its recursive score. The notes light their branches and send ripples across the water. Either performance can be saved as a stereo WAV.
+> Stillwater lets you hear the call stack. One recursive function grows a tree, and each call owns a branch, a span of time and a voice. The trunk holds the whole cycle as a drone and its children split that time, so at every moment the chord is exactly the running stack, from trunk to leaf. Prune branches into base cases, listen inside any branch as its own piece, grow a tree from your name, and let it drift forever in calm mode with a breathing guide. Export it as WAV, MIDI, a postcard or a link.
+
+**Suggested 60-second demo recording:** steps 1, 2, 4, 5 and 7, in that order.
