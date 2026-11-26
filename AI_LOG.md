@@ -1233,3 +1233,19 @@ First impression: the intro now opens with the idea itself ("A recursive functio
 
 Checked in Chrome desktop and 375 px mobile emulation, with no console errors. Not checked: a real microphone, Safari, a real phone, and listening by ear. Nothing is committed yet.
 ~~~~
+
+## Prompt 51
+
+~~~~
+Yes, push and ZIP
+~~~~
+
+### Claude Code reply
+
+~~~~
+Pushed the singing debugger, Hum a tree and the product fixes as e895249, authored by Tanzamul-Azad only. Before pushing, all 18 tests passed and the bundle matched a fresh build. The GitHub Pages workflow passed, and the live site serves the new Step and Hum buttons.
+
+This log entry is committed next. The release ZIP is then rebuilt from that final commit with git archive, using the same stillwater/ folder layout as before, and it replaces Stillwater-Epoch-1.zip on the epoch-1 release. The download link in the README stays the same.
+
+Still to do on your side: record the 60-second demo video, following submission/DEMO.md.
+~~~~
