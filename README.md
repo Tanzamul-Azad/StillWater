@@ -109,7 +109,9 @@ Open `dist/index.html`, or serve `dist/`. The GitHub Pages workflow runs the tes
 
 The tests check that every call splits its parent's time exactly and that the leaves tile the cycle with no gaps. They also check that at every moment the sounding notes form one trunk-to-leaf path, that pruning changes only the pruned subtree, that each drift generation changes exactly one gene, and that a shared link regrows an identical tree. Two more tests check that the score sounds the calls in call order, and that the debugger pauses each waiting frame on the line that called its child.
 
-Browser checks: Chrome desktop and mobile emulation, calm mode, pruning, listening inside, stepping, humming with a simulated microphone, link restore, and WAV, MIDI and PNG export. A one-cycle WAV renders in about 3.5 s and peaks at −1.5 dBFS.
+**On phones:** the tree tools fit in two rows down to 320 px, and a mini player keeps play and pause at hand while you shape the tree further down. Held sideways, the tree, tools and transport fit on one screen. Slider handles are larger on touch screens, dialogs scroll within the screen, and the layout respects notches and the home indicator. While the score plays, the screen stays awake where the browser allows it. On iPhone, Stillwater asks for media playback, so the silent switch does not mute it in Safari versions that support this.
+
+Browser checks: Chrome desktop and mobile emulation at 320, 360 and 390 px wide, landscape phone, tablet, calm mode, pruning, listening inside, stepping, humming with a simulated microphone, link restore, and WAV, MIDI and PNG export. A one-cycle WAV renders in about 3.5 s and peaks at −1.5 dBFS.
 
 ## Credits
 

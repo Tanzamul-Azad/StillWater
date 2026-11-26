@@ -1635,6 +1635,12 @@ void main() {
 
   // src/player.mjs
   var lookahead = 1.6;
+  function audioSession(type) {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = type;
+    } catch {
+    }
+  }
   var Player = class {
     constructor({ next, onEnd }) {
       this.next = next;
@@ -1648,6 +1654,7 @@ void main() {
     }
     async ensure(seed) {
       if (!this.context) {
+        audioSession("playback");
         const context = new AudioContext({ latencyHint: "playback" });
         this.context = context;
         this.master = context.createGain();
@@ -1860,6 +1867,9 @@ void main() {
   };
   var body = document.body;
   var playButton = byId("play");
+  var miniPlayer = byId("mini-player");
+  var pastStage = false;
+  var screenLock = null;
   var seek = byId("seek");
   var volume = byId("volume");
   var nature = byId("nature");
@@ -2001,6 +2011,8 @@ void main() {
   }
   function updatePlay() {
     setIcon(playButton, player.playing ? "pause" : "play", player.playing ? "Pause score" : "Play score");
+    setIcon(byId("mini-play"), player.playing ? "pause" : "play", player.playing ? "Pause score" : "Play score");
+    holdScreen(player.playing);
     byId("tool-play").setAttribute("aria-pressed", String(tool === "play" && !player.playing));
   }
   function currentTime() {
@@ -2178,15 +2190,18 @@ void main() {
       return;
     }
     if (player.playing || startRequest) pause();
+    audioSession("play-and-record");
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
     } catch {
+      audioSession("playback");
       showMelodyDraft([], "Microphone access was not allowed. You can choose a clip instead.");
       return;
     }
     if (!melodyDialog.open) {
       stream.getTracks().forEach((track) => track.stop());
+      audioSession("playback");
       return;
     }
     melodyRequest++;
@@ -2215,6 +2230,7 @@ void main() {
       cancelAnimationFrame(session.frame);
       clearTimeout(session.timer);
       stream.getTracks().forEach((track) => track.stop());
+      audioSession("playback");
       meter.close();
       if (hum === session) hum = null;
       showHum(false);
@@ -2554,6 +2570,10 @@ void main() {
     if (document.activeElement !== seek) seek.value = time;
     seek.setAttribute("aria-valuetext", clock(time) + " of " + clock(score.cycle));
     byId("elapsed").textContent = clock(time);
+    if (!miniPlayer.hidden) {
+      byId("mini-label").textContent = byId("cycle-label").textContent;
+      byId("mini-time").textContent = clock(time) + " / " + clock(score.cycle);
+    }
     const cue = byId("breath");
     cue.hidden = !breath;
     if (breath) {
@@ -2679,6 +2699,7 @@ void main() {
   }
   function setCalm(on) {
     body.dataset.calm = String(on);
+    showMini();
     setIcon(byId("calm"), on ? "close" : "calm", on ? "Leave calm mode" : "Enter calm mode");
     byId("calm").setAttribute("aria-pressed", String(on));
     cursor = hover = null;
@@ -2824,6 +2845,42 @@ void main() {
     if (!document.fullscreenElement && body.dataset.calm === "true") setCalm(false);
   });
   for (const type of ["pointermove", "pointerdown", "keydown", "focusin"]) window.addEventListener(type, wakeChrome, { passive: true });
+  function showMini() {
+    const hidden = !pastStage || body.dataset.calm === "true";
+    if (miniPlayer.hidden === hidden) return;
+    miniPlayer.hidden = hidden;
+    paint();
+  }
+  new IntersectionObserver(([entry]) => {
+    pastStage = !entry.isIntersecting && entry.boundingClientRect.bottom < 0;
+    showMini();
+  }).observe(byId("art").parentElement.querySelector(".transport"));
+  byId("mini-play").addEventListener("click", togglePlay);
+  byId("mini-tree").addEventListener("click", () => {
+    byId("art").scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+  });
+  async function holdScreen(on) {
+    if (!on) {
+      screenLock?.release().catch(() => {
+      });
+      screenLock = null;
+      return;
+    }
+    if (screenLock || !navigator.wakeLock || document.visibilityState !== "visible") return;
+    try {
+      screenLock = await navigator.wakeLock.request("screen");
+      screenLock.addEventListener("release", () => {
+        screenLock = null;
+      });
+    } catch {
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !player.playing) return;
+    if (player.context && player.context.state !== "running") player.context.resume().catch(() => {
+    });
+    holdScreen(true);
+  });
   function setTool(next) {
     tool = next;
     byId("tool-play").setAttribute("aria-pressed", String(tool === "play" && !player.playing));

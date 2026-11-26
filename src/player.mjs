@@ -5,6 +5,14 @@ import { soundingNote, stackAt } from './score.mjs';
 
 const lookahead = 1.6;
 
+// Safari on iPhone mutes Web Audio with the silent switch unless the page
+// asks for media playback, as a music app should.
+export function audioSession(type) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = type;
+  } catch {}
+}
+
 export class Player {
   constructor({ next, onEnd }) {
     this.next = next;
@@ -19,6 +27,7 @@ export class Player {
 
   async ensure(seed) {
     if (!this.context) {
+      audioSession('playback');
       const context = new AudioContext({ latencyHint: 'playback' });
       this.context = context;
       this.master = context.createGain();

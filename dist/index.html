@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#081119">
   <meta name="description" content="A recursive soundscape. Every sound is a function call: hear the call stack of a growing tree, prune it, listen inside it, and let it drift.">
   <title>Stillwater — Hear the Call Stack</title>
@@ -74,7 +74,7 @@
           <div class="stage-tools">
             <div class="segmented" role="group" aria-label="Tree tool">
               <button type="button" id="tool-play" aria-pressed="true" aria-label="Manual play" title="Play by hand"><svg class="icon" aria-hidden="true"><use href="#icon-hand"/></svg><span>Manual</span></button>
-              <button type="button" id="tool-prune" aria-pressed="false" title="Prune tool: cut a branch into a base case"><svg class="icon" aria-hidden="true"><use href="#icon-scissors"/></svg><span>Prune</span></button>
+              <button type="button" id="tool-prune" aria-pressed="false" aria-label="Prune" title="Prune tool: cut a branch into a base case"><svg class="icon" aria-hidden="true"><use href="#icon-scissors"/></svg><span>Prune</span></button>
             </div>
             <button class="branch-picker" id="browse" type="button">Explore</button>
             <button class="icon-button stage-button" id="undo-tree" type="button" aria-label="Undo tree edit" title="Undo tree edit" disabled><svg class="icon" aria-hidden="true"><use href="#icon-undo"/></svg></button>
@@ -287,6 +287,11 @@
       <button class="download-button" id="melody-apply" type="button" disabled>Grow tree</button>
     </div>
   </dialog>
+  <div id="mini-player" class="mini-player" role="region" aria-label="Playback" hidden>
+    <button type="button" class="play-button" id="mini-play" aria-label="Play score" title="Play score"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
+    <p class="mini-status"><span id="mini-label">Generation 1</span><span id="mini-time">0:00 / 0:48</span></p>
+    <button type="button" class="small-button" id="mini-tree">Back to the tree</button>
+  </div>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
 </body>
 </html>
