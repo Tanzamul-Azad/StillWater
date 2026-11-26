@@ -102,16 +102,46 @@ function prepareMelody(settings, shift) {
   const tonic = notes[0].midi;
   const steps = [...new Set(notes.map(note => (note.midi - tonic + 120) % 12))].sort((a, b) => a - b);
   const keyboardRoot = 60 + tonic % 12;
-  return { notes, duration, repetitions, tonic, keys: steps.map(step => keyboardRoot + step) };
+  const secondsPerUnit = settings.cycle / (duration * repetitions);
+  const timeline = Array.from({ length: repetitions }, (_, repeat) => notes.map((note, i) => ({
+    midi: note.midi,
+    start: (repeat * duration + (notes[i - 1]?.end ?? 0)) * secondsPerUnit,
+    end: (repeat * duration + note.end) * secondsPerUnit,
+  }))).flat();
+  timeline.at(-1).end = settings.cycle;
+  return { notes, timeline, tonic, keys: steps.map(step => keyboardRoot + step) };
 }
 
-function melodyPitch(melody, scene, cycle, branch, lead) {
+function harmonyPitch(melody, scene, branch) {
   if (branch.depth === 0) return inRegister(scene, melody.tonic, 0);
-  const phase = (branch.start + branch.end) / (2 * cycle) * melody.repetitions % 1;
-  const note = melody.notes.find(note => note.end > phase * melody.duration) ?? melody.notes.at(-1);
-  if (lead) return note.midi;
+  const middle = (branch.start + branch.end) / 2;
+  const note = melody.timeline.find(note => note.end > middle) ?? melody.notes.at(-1);
   const harmony = (branch.depth + branch.degree) % 3 === 0 ? 7 : 0;
   return inRegister(scene, note.midi + harmony, branch.depth);
+}
+
+function leadNote(branch, midi, start, end) {
+  const { index, depth, pan, velocity } = branch;
+  return { index, depth, pan, velocity, midi, start, end, at: start, melodyLead: true };
+}
+
+function scoreEvents(branches) {
+  return branches.flatMap(branch => branch.notes ?? [branch]).sort((a, b) => a.at - b.at || a.depth - b.depth);
+}
+
+// Lines of grow() as shown in the debugger: 2 sound(call), 4 return,
+// 5 grow(left(call)), 6 grow(right(call)). A frame with a running child is
+// paused on the line that called it.
+export function sourceLines(stack, sounding) {
+  return stack.map((node, i) => {
+    const child = stack[i + 1];
+    if (child) return node.children[0] === child.index ? 5 : 6;
+    return sounding || node.children.length ? 2 : 4;
+  });
+}
+
+export function soundingNote(branch, time) {
+  return branch.notes?.find(note => time < note.end) ?? branch.notes?.at(-1) ?? branch;
 }
 
 export function intervalFor(spread) {
@@ -194,8 +224,17 @@ export function compose(input) {
     };
     if (melody) {
       branch.melodyLead = terminal;
-      branch.midi = melodyPitch(melody, scene, settings.cycle, branch, terminal);
       branch.velocity *= terminal ? 1.4 : 0.72;
+      if (terminal) {
+        // A leaf can play several melody notes. The branch boundary splits
+        // the phrase without dropping notes when the tree has few leaves.
+        branch.notes = melody.timeline
+          .filter(note => note.start < end && start < note.end)
+          .map(note => leadNote(branch, note.midi, Math.max(start, note.start), Math.min(end, note.end)));
+        branch.midi = branch.notes[0].midi;
+      } else {
+        branch.midi = harmonyPitch(melody, scene, branch);
+      }
     }
     branches.push(branch);
     if (parent !== null) branches[parent].children.push(index);
@@ -226,7 +265,7 @@ export function compose(input) {
   }
 
   grow({ depth: 0, parent: null, path: '', start: 0, end: settings.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
-  const events = [...branches].sort((a, b) => a.at - b.at || a.depth - b.depth);
+  const events = scoreEvents(branches);
   return { settings, scene, seed, generation, shift, interval, melody, branches, events, cycle: settings.cycle, focus: null };
 }
 
@@ -249,11 +288,15 @@ export function focusOn(score, index) {
         ? (original.melodyLead ? original.midi : inRegister(score.scene, original.midi, depth))
         : pitch(score.scene, original.degree, depth, score.shift),
     };
+    if (original.notes) {
+      branch.notes = original.notes.map(note => leadNote(branch, note.midi,
+        (note.start - root.start) * stretch, (note.end - root.start) * stretch));
+    }
     branches.push(branch);
     if (parent !== null) branches[parent].children.push(branch.index);
     for (const child of original.children) visit(child, branch.index);
   })(index, null);
-  const events = [...branches].sort((a, b) => a.at - b.at || a.depth - b.depth);
+  const events = scoreEvents(branches);
   return { ...score, branches, events, focus: root.path };
 }
 
@@ -296,14 +339,19 @@ export function clock(seconds) {
 }
 
 const hashKeys = { scene: 'scene', depth: 'depth', sway: 'sway', spread: 'spread', taper: 'length', cycle: 'cycle', seed: 'seed' };
+const mixFields = ['nature', 'volume'];
 
-export function toHash(settings, focus, generation = 0) {
+export function toHash(settings, focus, generation = 0, mix = {}) {
   const params = new URLSearchParams();
   for (const [key, name] of Object.entries(hashKeys)) params.set(name, settings[key]);
   if (settings.pruned.length) params.set('cut', settings.pruned.join('.'));
   if (settings.melody?.length) params.set('melody', settings.melody.map(note => note.join(':')).join('.'));
   if (focus) params.set('inside', focus);
   if (generation) params.set('generation', generationNumber(generation));
+  for (const key of mixFields) {
+    if (Number.isInteger(mix[key]) && mix[key] >= 0 && mix[key] <= 100) params.set(key, mix[key]);
+  }
+  if (typeof mix.water === 'boolean') params.set('water', mix.water ? '1' : '0');
   return '#' + params.toString();
 }
 
@@ -319,5 +367,12 @@ export function fromHash(hash) {
   const scene = Object.hasOwn(scenes, raw.scene) ? raw.scene : 'lagoon';
   const settings = normalize({ ...scenes[scene].defaults, ...raw, scene });
   const inside = params.get('inside');
-  return { settings, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get('generation')) };
+  const mix = {};
+  for (const key of mixFields) {
+    const value = params.get(key);
+    if (/^\d{1,3}$/.test(value ?? '') && Number(value) <= 100) mix[key] = Number(value);
+  }
+  const water = params.get('water');
+  if (water === '0' || water === '1') mix.water = water === '1';
+  return { settings, mix, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get('generation')) };
 }

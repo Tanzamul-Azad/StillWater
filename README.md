@@ -4,7 +4,7 @@
 
 **Solo entry by Tanzamul-Azad for *Recursive Soundscapes*, Hub’s Quest Epoch 1.**
 
-[Play online](https://tanzamul-azad.github.io/StillWater/) · [Hear Moonlit Lagoon](submission/moonlit-lagoon.wav) · [Hear Violet Hour](submission/violet-hour.wav) · [MIDI of three drifting cycles](submission/stillwater-callstack.mid) · [Judging walkthrough](submission/DEMO.md) · [AI development log](AI_LOG.md)
+[Play online](https://tanzamul-azad.github.io/StillWater/) · [Download the submission ZIP](https://github.com/Tanzamul-Azad/StillWater/releases/latest/download/Stillwater-Epoch-1.zip) · [Hear Moonlit Lagoon](submission/moonlit-lagoon.wav) · [Hear Violet Hour](submission/violet-hour.wav) · [MIDI of three drifting cycles](submission/stillwater-callstack.mid) · [Judging walkthrough](submission/DEMO.md) · [AI development log](AI_LOG.md)
 
 ![A glowing recursive tree over still water. One path from the trunk to a leaf is lit: the active call stack.](submission/stillwater-postcard.png)
 
@@ -12,7 +12,7 @@
 
 Most recursive music walks a tree and plays one note per call. Stillwater gives each call **time** as well. The trunk owns the whole cycle. It hands the first part of its time to its left child and the rest to its right child, and every call does the same until it reaches a base case.
 
-At any moment exactly one call per level is running, which is exactly the call stack. Each level has its own voice and register, so the stack becomes a chord:
+The running stack has one call per active level. Each level schedules a voice in its own register, while note releases and reverb can ring into the next call:
 
 | Level | Lasts | Voice in Moonlit Lagoon |
 | --- | --- | --- |
@@ -37,21 +37,22 @@ function grow(call) {
 ## What you can do
 
 - **Listen.** Press *Play the score* to hear one cycle. Turn on **Drift and repeat** to keep going while the score changes one interval gene at a time and shifts the key every few cycles.
-- **See the recursion run.** The **call stack panel** lists the active `grow()` frames with their notes, and each frame's bar fills at the speed of that call. It sits beside the tree on wide screens and below it on smaller ones. A bead travels along every active branch. The **timeline** under the tree shows the time partition, one row per level.
-- **Shape it.** *Depth* adds voices. *Sway* sets how each call splits its time, which shapes both the rhythm and the tree. *Spread* sets the melodic interval, from steps to wide leaps, and the stereo width. *Branch length* changes the shape. A **seed can be any word**: type your name to grow your own tree.
-- **Prune.** With the Prune tool, tap a branch to turn it into a base case. Its voice holds, the levels above it rest, and the music breathes. Tap it again to let it regrow.
+- **Debug it by ear.** Beside the tree, `grow.js` works like a debugger that sings. Each line shows markers for the frames paused on it. The deepest call sounds on `sound(call)`, then waits on `return` until its time ends, while its ancestors wait on `grow(left(call))` or `grow(right(call))`. Press **Step** or **N** to run one call at a time and hear its note. The score plays the calls in the same order, spread over time.
+- **See the recursion run.** The **call stack panel** lists the active `grow()` frames with their notes and paused lines, and each frame's bar fills at the speed of that call. It sits beside the tree on wide screens and below it on smaller ones. A bead travels along every active branch. The **timeline** under the tree shows the time partition, one row per level.
+- **Shape it.** Use *Shape tree* to open the controls. *Depth* adds voices, *Sway* sets the time split, and *Spread* shapes the intervals and stereo width. Change the seed to grow another tree. Switching soundscapes keeps your shape and pruning. *Reset tree* loads the current soundscape’s starting shape, and *Undo* restores the last edit.
+- **Prune.** Tap a branch with the Prune tool to turn it into a base case. The branch keeps its note and time span, and its descendant notes drop out. Tap again to regrow it, or use *Undo*.
 - **Listen inside.** Double-click a branch, or use *Explore → Listen inside*. Every subtree is a complete composition, so its span stretches to a full cycle and its levels are re-voiced.
 - **Relax.** *Calm mode* expands the tree to the full screen with a breathing cue and playback controls. The controls fade when you're idle. The **breathing guide** uses left calls for the in-breath and right calls for the out-breath. The presets give right calls more time. Use the *sleep timer* to fade the score out, or raise the *Nature* slider to blend in ambience. Nature starts off by default and remembers the selected level.
 - **Play by hand.** Tap or drag across the canopy to hear each branch's pitch and its level's instrument, or use the note keys. Choose *Manual* to pause the score and play on your own. Switch off *Water sounds* to mute the Lagoon water and Cedar rain in playback and WAV exports. Switching it on from a silent Nature mix blends water back into the score.
-- **Plant a melody.** Open *Recursion → Plant a melody*, choose a clip of humming, isolated vocals, or a solo instrument, then select *Grow tree*. You can also try the built-in example. Stillwater detects pitches and relative lengths in the first 12 seconds, assigns the melody to the leaves, and voices the lower branches as harmony. The clip stays on your device. WAV, MIDI and share links use the resulting score, and only the notes are included in a share link.
-- **Keep it.** Export a **WAV** (one cycle, or three or six drifting cycles), a **MIDI** file with one track per recursion level, a **postcard** image of the tree with its recipe, a **link** that regrows the current generation, or a **live recording** with your play-along. Longer WAV exports show cycle progress and gently crossfade between cycles.
+- **Hum a tree.** Press **Hum a melody** and hum, sing or whistle for up to ten seconds. You can also choose a clip of one voice or instrument, or try the built-in example. Stillwater finds pitches and relative lengths on your device, grows a tree that plays the tune at its leaves, and harmonizes the branches below it. Clips are read up to their first 12 seconds. A leaf can play several notes, so shallow trees can play the whole detected phrase. The audio never leaves your device. Share links carry only the extracted notes, and Score WAV and MIDI use the arranged score.
+- **Keep it.** Choose **Record** beside the tree before playing to capture your performance, then select **Stop & save**. Use **Score WAV** to render one, three or six cycles of the generated score with its ambience. **Link** restores the tree, generation and listening mix. MIDI and a postcard are also available.
 
 ## How the brief is met
 
 | Mandatory deliverable | In Stillwater |
 | --- | --- |
 | Recursive algorithm with configurable parameters | `grow()` in [`src/score.mjs`](src/score.mjs). Depth, sway, spread, branch length, cycle, seed or word, plus pruned base cases |
-| Interactive simulation or visualization | Growth in call order, a live call stack, beads on active calls, the time-partition timeline, morphing between drifted trees |
+| Interactive simulation or visualization | A source view of `grow()` that steps call by call, growth in call order, a live call stack, beads on active calls, the time-partition timeline, morphing between drifted trees |
 | Procedural music from the recursion | Pitch from the left/right path, rhythm from the time split, voice and register from depth, stereo from branch position, harmony from the stack |
 | UI with parameter controls and playback | Controls with live re-scheduling, play and pause, seeking, drift, volume and nature mix, sleep timer, keyboard support |
 | Audio export | Offline-rendered 44.1 kHz stereo WAV (one to six cycles), session recording, MIDI |
@@ -106,9 +107,9 @@ npm run build   # bundles src/ into dist/stillwater.js
 
 Open `dist/index.html`, or serve `dist/`. The GitHub Pages workflow runs the tests, rebuilds the bundle, checks it against the committed copy and deploys `dist/`.
 
-The tests check that every call splits its parent's time exactly and that the leaves tile the cycle with no gaps. They also check that at every moment the sounding notes form one trunk-to-leaf path, that pruning changes only the pruned subtree, that each drift generation changes exactly one gene, and that a shared link regrows an identical tree.
+The tests check that every call splits its parent's time exactly and that the leaves tile the cycle with no gaps. They also check that at every moment the sounding notes form one trunk-to-leaf path, that pruning changes only the pruned subtree, that each drift generation changes exactly one gene, and that a shared link regrows an identical tree. Two more tests check that the score sounds the calls in call order, and that the debugger pauses each waiting frame on the line that called its child.
 
-Browser checks: Chrome desktop and mobile emulation, calm mode, pruning, listening inside, link restore, and WAV, MIDI and PNG export. A one-cycle WAV renders in about 3.5 s and peaks at −1.5 dBFS.
+Browser checks: Chrome desktop and mobile emulation, calm mode, pruning, listening inside, stepping, humming with a simulated microphone, link restore, and WAV, MIDI and PNG export. A one-cycle WAV renders in about 3.5 s and peaks at −1.5 dBFS.
 
 ## Credits
 

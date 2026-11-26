@@ -1101,3 +1101,135 @@ push
 ~~~~
 অনুমোদিত মিক্সসহ Stillwater-এর বর্তমান কাজটাই পুশ করছি। আগে কোন ফাইল কমিটে যাবে, লেখকের পরিচয় আর বিল্ড যাচাই করব। তারপর GitHub-এ পুশ করে ডেপ্লয়ের অবস্থা দেখব।
 ~~~~
+
+## Prompt 46
+
+~~~~
+সো তো একটু ভালো করে রিভিউ করে দেখো যে আমরা যে আসলে ইউজ কেসটার জন্য কাজ করতেছি সেই ইউজ কেসটা কি ফিল আপ হইছে নাকি? এই ডেলিভারেবলসে? তোমার এই প্রোডাক্টটা কি সেই ইউজ কেসটা প্রপারলি করতে পারছে কিনা? আর কোথায় করতে পারেনাই সেগুলো মেনশন করো। সেগুলা নোট ডাউন করো
+~~~~
+
+*English translation:* So review it carefully: is the use case we are building for actually met by these deliverables? Can this product really do that use case properly? Mention where it falls short, and note those down.
+
+### Codex reply
+
+~~~~
+মূল ইউজ কেস পূরণ হয়েছে। লাইভ সাইটে গাছ বাজিয়েছি, চলন্ত স্কোরে ডাল ছেঁটে সুরের স্তর কমিয়েছি, একটা সাবট্রি আলাদা করে শুনেছি, আর তৈরি স্কোর WAV হিসেবে নামিয়েছি। অর্থাৎ গাছ বদলে নিজের মতো সাউন্ডস্কেপ বানানো ও সেভ করার পথ কাজ করে।
+
+যেখানে ঘাটতি আছে
+* হাতে বাজানো সুর সেভ করার পথ সহজে চোখে পড়ে না। সাধারণ WAV বাটন গাছের তৈরি স্কোর সেভ করে। নিজের পারফরম্যান্স রাখতে বাজানোর আগেই নিচের Record what you hear চালু করতে হয়।
+* শেয়ার করলে গাছ ফেরে, মিক্স ফেরে না। পরীক্ষায় custom seed আর ছাঁটা ডাল ঠিকমতো ফিরেছে। Nature ৬৮% দিয়ে শেয়ার করলেও নতুন ব্রাউজারে সেটা Off ছিল।
+* Preset বদলালে তৈরি গাছের কিছু কাজ হারায়। Cedar বাছার পর custom seed ও ছাঁটা ডাল ডিফল্টে ফিরে গেছে। আগের অবস্থায় ফেরার দৃশ্যমান Undo নেই।
+* Melody Seed ছোট ক্লিপের জন্য কার্যকর। সাত নোটের উদাহরণটা কাজ করেছে। Depth 2-তে চারটি melody leaf থাকায় পুরো সাত নোট ধরে রাখার জায়গা ছিল না।
+
+আগের ব্যাখ্যায় একটা সংশোধন আছে। ডাল কাটলে ওই ডালের নোটের সময় একই থাকে। তার পরের ডালগুলোর নোট সরে যায়, তাই ওই অংশের সুর পাতলা হয়।
+
+জমার সবচেয়ে জরুরি ঘাটতি
+লাইভ সাইট আপডেটেড, কিন্তু epoch-1 রিলিজের ZIP পুরোনো। ZIP নামিয়ে দেখেছি, তাতে বর্তমান call-stack ইন্টারফেস আর Melody Seed নেই। জাজ ZIP দিয়ে শুরু করলে পুরোনো অ্যাপ দেখবেন।
+
+Brief-এর পাঁচটি কার্যকর ডেলিভারেবল যাচাই হয়েছে। ষষ্ঠটির responsive touch ও Calm mode কাজ করেছে। নতুন ব্যবহারকারীর কাছে ব্যবহারটা কতটা সহজ ও আরামদায়ক, এবং স্ক্রিন রিডার ও বাস্তব ফোনে কেমন চলে, সেগুলো এখনও যাচাই বাকি।
+~~~~
+
+## Prompt 47
+
+~~~~
+শুধু ঘাড়টিগুলো পূরণ করে ফেলো প্রপারলি। যেন একটা ভালো প্রোডাক্ট হিসেবে এটা কাজ করা যায়। ওই সব কেসেস ফিক্স করি। আমরা নতুন কিছু করি। একটা প্রপার ওয়েতে
+~~~~
+
+*English translation:* Just fill those gaps properly, so it works as a good product. Let's fix all those cases and do it the proper way.
+
+### Codex update
+
+~~~~
+রিভিউয়ের ঘাটতিগুলো ধরেই কাজ করছি। হাতে বাজানো রেকর্ড করার বাটন গাছের পাশে আনব, শেয়ার লিংকে মিক্সও রাখব, আর সাউন্ডস্কেপ বদলালেও তৈরি গাছটা থাকবে। Melody Seed-এ কম ডালেও পুরো নোটের ক্রম বাজানোর ব্যবস্থা করব। শেষে একই যাচাই করা বিল্ড থেকে জমার ZIP তৈরি করব।
+~~~~
+
+### Codex update
+
+~~~~
+গাছের পাশে Record আর Undo এসেছে। সাউন্ডস্কেপ বদলালেও গাছের কাটাছেঁড়া থাকে। সাত নোটের উদাহরণটাও এখন চার পাতার গাছে পুরো ক্রমে বাজে। এবার ব্রাউজারে রেকর্ডিং, শেয়ার, কিবোর্ড আর ছোট স্ক্রিনের পথগুলো পরীক্ষা করছি।
+~~~~
+
+*The Codex session stopped here because its usage limit was reached, before the browser checks and the ZIP were finished.*
+
+# Session 4: Claude Code, verification of the Codex fixes
+
+## Prompt 48
+
+~~~~
+(The user pasted prompts 46 and 47 with the Codex replies above, then wrote:)
+github and ei local files dekhe latest update ta dekho
+~~~~
+
+*English translation:* Look at GitHub and these local files and check the latest update.
+
+### Claude Code reply
+
+~~~~
+GitHub main is at 0281e98 and GitHub Pages deployed it successfully. The fixes from prompt 47 were only local and not committed. The epoch-1 release ZIP is still built from the older commit 4391c76.
+
+I checked the local fixes. All 16 tests pass, and the committed bundle matches a fresh build. In the browser:
+- Record beside the tree saves a performance WAV.
+- Undo and Ctrl+Z restore tree edits.
+- Switching soundscapes keeps the seed and pruning.
+- Reset tree works.
+- A share link restores the Nature level.
+- The melody example at depth 2 plays through four leaves.
+- The 375 px phone layout has no horizontal scroll.
+
+I made one small fix: the keyboard handler no longer throws when a key event's target is not an element.
+
+Still to do: commit and push these fixes, and rebuild the release ZIP from that commit so judges get the current app.
+~~~~
+
+## Prompt 49
+
+~~~~
+(The user pasted the official Epoch 1 submission form text: "Build something unexpected. Prove what you can do.", the deadline, and the checklist: solo work, public repository, complete AI prompt logs, and working deliverables such as the live link, demo video or documentation. Then wrote:)
+Here is saying to build something unexpected
+So did we built yet liek that?
+~~~~
+
+### Claude Code reply
+
+~~~~
+Partly. The idea is unexpected, but the first look is not.
+
+Unexpected:
+- Recursion becomes time, not only notes. Each call owns a span of time, so the chord you hear is the live call stack.
+- Pruning a branch writes a base case. Every subtree is a complete piece you can listen inside.
+- A short hummed or sung clip grows a tree from its melody, processed on the device.
+- The breathing guide comes from the left and right calls.
+
+Expected:
+- A glowing fractal tree is the most common picture of recursion. A judge glancing for ten seconds may see "a fractal tree with music".
+- The surprise sits in the side panel and the text, so you have to read to find it.
+- Sliders, play and WAV export are what most entries will have.
+
+Ways to make the surprise obvious:
+1. Show the grow() code beside the tree, highlighting the running line and frames as calls push and pop: a debugger that sings.
+2. Let people hum into the microphone instead of choosing a file.
+3. Start the demo video with the surprise.
+
+Submission checklist: the repo, live site, AI log and ZIP links are public and load. Missing: a demo video. Not pushed yet: the latest fixes and this log. The ZIP is still the old version.
+~~~~
+
+## Prompt 50
+
+~~~~
+yes make it unexpectedly good and unique from others
+make good impression
+~~~~
+
+### Claude Code reply
+
+~~~~
+I built both ideas and made them the first thing people see.
+
+A debugger that sings: a grow.js source view now sits under the call stack. Markers on each line show where every running frame is paused. The deepest call flashes on sound(call) and then waits on return, while its ancestors wait on grow(left(call)) or grow(right(call)). The frame list shows each frame's line too, for example grow(LL) :5. Step (or N) pauses the score and runs one call at a time, playing its note and lighting its path. The score plays the calls in the same order, so stepping and listening agree. Two new tests check this, and 18 of 18 pass.
+
+Hum a tree: Plant a melody now has a Hum a melody button with a live level meter. It records up to 10 seconds from the microphone, finds the notes on the device and grows a tree that plays the tune at its leaves. I tested it with a simulated microphone stream, because I can't approve a real microphone prompt.
+
+First impression: the intro now opens with the idea itself ("A recursive function that you can hear... the chord is the live call stack") and offers Play the score, Hum a tree and Play by hand. README, the How it works dialog and submission/DEMO.md now lead with these, including a 60-second video plan.
+
+Checked in Chrome desktop and 375 px mobile emulation, with no console errors. Not checked: a real microphone, Safari, a real phone, and listening by ear. Nothing is committed yet.
+~~~~

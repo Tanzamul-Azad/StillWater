@@ -209,15 +209,38 @@
     const tonic = notes[0].midi;
     const steps = [...new Set(notes.map((note) => (note.midi - tonic + 120) % 12))].sort((a, b) => a - b);
     const keyboardRoot = 60 + tonic % 12;
-    return { notes, duration, repetitions, tonic, keys: steps.map((step) => keyboardRoot + step) };
+    const secondsPerUnit = settings2.cycle / (duration * repetitions);
+    const timeline = Array.from({ length: repetitions }, (_, repeat) => notes.map((note, i) => ({
+      midi: note.midi,
+      start: (repeat * duration + (notes[i - 1]?.end ?? 0)) * secondsPerUnit,
+      end: (repeat * duration + note.end) * secondsPerUnit
+    }))).flat();
+    timeline.at(-1).end = settings2.cycle;
+    return { notes, timeline, tonic, keys: steps.map((step) => keyboardRoot + step) };
   }
-  function melodyPitch(melody, scene, cycle, branch, lead) {
+  function harmonyPitch(melody, scene, branch) {
     if (branch.depth === 0) return inRegister(scene, melody.tonic, 0);
-    const phase = (branch.start + branch.end) / (2 * cycle) * melody.repetitions % 1;
-    const note = melody.notes.find((note2) => note2.end > phase * melody.duration) ?? melody.notes.at(-1);
-    if (lead) return note.midi;
+    const middle = (branch.start + branch.end) / 2;
+    const note = melody.timeline.find((note2) => note2.end > middle) ?? melody.notes.at(-1);
     const harmony = (branch.depth + branch.degree) % 3 === 0 ? 7 : 0;
     return inRegister(scene, note.midi + harmony, branch.depth);
+  }
+  function leadNote(branch, midi, start2, end) {
+    const { index, depth, pan, velocity } = branch;
+    return { index, depth, pan, velocity, midi, start: start2, end, at: start2, melodyLead: true };
+  }
+  function scoreEvents(branches) {
+    return branches.flatMap((branch) => branch.notes ?? [branch]).sort((a, b) => a.at - b.at || a.depth - b.depth);
+  }
+  function sourceLines(stack, sounding) {
+    return stack.map((node, i) => {
+      const child = stack[i + 1];
+      if (child) return node.children[0] === child.index ? 5 : 6;
+      return sounding || node.children.length ? 2 : 4;
+    });
+  }
+  function soundingNote(branch, time) {
+    return branch.notes?.find((note) => time < note.end) ?? branch.notes?.at(-1) ?? branch;
   }
   function intervalFor(spread) {
     if (spread < 22) return { up: 1, down: 1, name: "steps" };
@@ -302,8 +325,13 @@
       };
       if (melody) {
         branch.melodyLead = terminal;
-        branch.midi = melodyPitch(melody, scene, settings2.cycle, branch, terminal);
         branch.velocity *= terminal ? 1.4 : 0.72;
+        if (terminal) {
+          branch.notes = melody.timeline.filter((note) => note.start < end && start2 < note.end).map((note) => leadNote(branch, note.midi, Math.max(start2, note.start), Math.min(end, note.end)));
+          branch.midi = branch.notes[0].midi;
+        } else {
+          branch.midi = harmonyPitch(melody, scene, branch);
+        }
       }
       branches.push(branch);
       if (parent !== null) branches[parent].children.push(index);
@@ -333,7 +361,7 @@
       }
     }
     grow({ depth: 0, parent: null, path: "", start: 0, end: settings2.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
-    const events = [...branches].sort((a, b) => a.at - b.at || a.depth - b.depth);
+    const events = scoreEvents(branches);
     return { settings: settings2, scene, seed, generation, shift, interval, melody, branches, events, cycle: settings2.cycle, focus: null };
   }
   function focusOn(score2, index) {
@@ -355,11 +383,19 @@
         at: depth === 0 ? 0 : Math.max(0, (original.at - root.start) * stretch),
         midi: score2.melody ? original.melodyLead ? original.midi : inRegister(score2.scene, original.midi, depth) : pitch(score2.scene, original.degree, depth, score2.shift)
       };
+      if (original.notes) {
+        branch.notes = original.notes.map((note) => leadNote(
+          branch,
+          note.midi,
+          (note.start - root.start) * stretch,
+          (note.end - root.start) * stretch
+        ));
+      }
       branches.push(branch);
       if (parent !== null) branches[parent].children.push(branch.index);
       for (const child of original.children) visit(child, branch.index);
     })(index, null);
-    const events = [...branches].sort((a, b) => a.at - b.at || a.depth - b.depth);
+    const events = scoreEvents(branches);
     return { ...score2, branches, events, focus: root.path };
   }
   function stackAt(score2, time) {
@@ -390,13 +426,18 @@
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
   }
   var hashKeys = { scene: "scene", depth: "depth", sway: "sway", spread: "spread", taper: "length", cycle: "cycle", seed: "seed" };
-  function toHash(settings2, focus, generation = 0) {
+  var mixFields = ["nature", "volume"];
+  function toHash(settings2, focus, generation = 0, mix = {}) {
     const params = new URLSearchParams();
     for (const [key, name] of Object.entries(hashKeys)) params.set(name, settings2[key]);
     if (settings2.pruned.length) params.set("cut", settings2.pruned.join("."));
     if (settings2.melody?.length) params.set("melody", settings2.melody.map((note) => note.join(":")).join("."));
     if (focus) params.set("inside", focus);
     if (generation) params.set("generation", generationNumber(generation));
+    for (const key of mixFields) {
+      if (Number.isInteger(mix[key]) && mix[key] >= 0 && mix[key] <= 100) params.set(key, mix[key]);
+    }
+    if (typeof mix.water === "boolean") params.set("water", mix.water ? "1" : "0");
     return "#" + params.toString();
   }
   function fromHash(hash) {
@@ -411,7 +452,14 @@
     const scene = Object.hasOwn(scenes, raw.scene) ? raw.scene : "lagoon";
     const settings2 = normalize({ ...scenes[scene].defaults, ...raw, scene });
     const inside = params.get("inside");
-    return { settings: settings2, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get("generation")) };
+    const mix = {};
+    for (const key of mixFields) {
+      const value = params.get(key);
+      if (/^\d{1,3}$/.test(value ?? "") && Number(value) <= 100) mix[key] = Number(value);
+    }
+    const water = params.get("water");
+    if (water === "0" || water === "1") mix.water = water === "1";
+    return { settings: settings2, mix, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get("generation")) };
   }
 
   // src/audio.mjs
@@ -1653,7 +1701,7 @@ void main() {
       sparkle.connect(this.engine.sparkle);
       const cycle = { score: score2, start: start2, music, sparkle, cursor: 0, joined: false, fading: false };
       const now = this.now;
-      const active = from > 0 ? new Set(stackAt(score2, from)) : null;
+      const active = from > 0 ? new Set(stackAt(score2, from).map((branch) => soundingNote(branch, from))) : null;
       for (const note of score2.events) {
         if (note.at >= from) break;
         cycle.cursor++;
@@ -1819,6 +1867,7 @@ void main() {
   var icicle = byId("icicle");
   var melodyDialog = byId("melody-dialog");
   var melodyInput = byId("melody-file");
+  var undoButton = byId("undo-tree");
   var waterPreference = "stillwater.water-sounds";
   var naturePreference = "stillwater.nature";
   var seconds = () => performance.now() / 1e3;
@@ -1839,6 +1888,7 @@ void main() {
   var onsets = /* @__PURE__ */ new Map();
   var echoes = [];
   var previousStack = /* @__PURE__ */ new Set();
+  var previousLead = null;
   var stackKey = "";
   var frame = 0;
   var activeUntil = 0;
@@ -1853,6 +1903,12 @@ void main() {
   var startRequest;
   var melodyDraft = [];
   var melodyRequest = 0;
+  var treeHistory = [];
+  var editedSlider = null;
+  var stepping = null;
+  var steppedAt = 0;
+  var sourceKey = "";
+  var topLine = 0;
   var quietListening = () => body.dataset.calm === "true" || Number(byId("sleep").value) > 0;
   var player = new Player({
     next: (previous) => drift ? buildScore(previous.generation + 1) : quietListening() ? previous : null,
@@ -1914,6 +1970,7 @@ void main() {
       return;
     }
     startRequest = null;
+    stepping = null;
     if (grow && !reducedMotion.matches) garden.setScore(score, "grow");
     player.play(score, Math.min(position, score.cycle - 0.05));
     body.dataset.playing = "true";
@@ -1954,7 +2011,9 @@ void main() {
   }
   function applySettings(next, mode = "morph", generation = score?.generation ?? 0) {
     clearTimeout(seekTimer);
+    const previousScene = settings?.scene;
     settings = normalize(next);
+    stepping = null;
     version++;
     score = buildScore(generation);
     garden.setScore(score, reducedMotion.matches ? "none" : mode);
@@ -1964,10 +2023,31 @@ void main() {
     if (player.playing) {
       clearTimeout(replaceTimer);
       replaceTimer = setTimeout(() => player.replace(score), 160);
+      if (previousScene !== settings.scene) player.ambience(settings.scene);
     } else {
       pausedAt = Math.min(pausedAt, score.cycle - 0.05);
     }
     paint();
+  }
+  function rememberTree() {
+    treeHistory.push({ settings, focus: focusPath, generation: score.generation });
+    if (treeHistory.length > 20) treeHistory.shift();
+    undoButton.disabled = false;
+  }
+  function editTree(next, mode, generation, focus = focusPath) {
+    editedSlider = null;
+    rememberTree();
+    focusPath = focus;
+    applySettings(next, mode, generation);
+  }
+  function undoTree() {
+    const previous = treeHistory.pop();
+    if (!previous) return;
+    editedSlider = null;
+    undoButton.disabled = treeHistory.length === 0;
+    focusPath = previous.focus;
+    applySettings(previous.settings, "morph", previous.generation);
+    notify("Tree edit undone.");
   }
   function showSettings() {
     for (const key of sliders) {
@@ -1998,11 +2078,30 @@ void main() {
     if (inside) byId("focus-label").textContent = "Inside " + describe({ path: inside }) + " · " + callCount;
     byId("cycle-label").textContent = inside ? "Inside a branch · generation " + (score.generation + 1) : "Generation " + (score.generation + 1);
   }
+  function scoreHash() {
+    return toHash(settings, focusPath, score.generation, {
+      nature: Number(nature.value),
+      volume: Number(volume.value),
+      water: waterEnabled
+    });
+  }
   function syncHash() {
     try {
-      history.replaceState(null, "", toHash(settings, focusPath, score.generation));
+      history.replaceState(null, "", scoreHash());
     } catch {
     }
+  }
+  function updateVolume() {
+    if (Number(volume.value)) rememberedVolume = Number(volume.value);
+    if (warm) player.setVolume(level());
+    setIcon(byId("mute"), Number(volume.value) ? "volume" : "muted", Number(volume.value) ? "Mute" : "Unmute");
+    fillRange(volume);
+  }
+  function readMix(mix = {}) {
+    if (mix.volume !== void 0) volume.value = mix.volume;
+    if (mix.nature !== void 0) nature.value = mix.nature;
+    if (mix.water !== void 0) waterEnabled = mix.water;
+    player.setWater(waterEnabled);
   }
   function showAmbience() {
     const scene = settings.scene;
@@ -2029,11 +2128,7 @@ void main() {
     }
   }
   function chooseScene(key) {
-    const melody = settings.melody;
-    focusPath = null;
-    score = null;
-    applySettings({ scene: key, ...scenes[key].defaults, pruned: [], melody }, "grow");
-    if (player.playing) player.ambience(key);
+    if (key !== settings.scene) editTree({ ...settings, scene: key });
   }
   function showMelodyDraft(notes, message) {
     melodyDraft = notes;
@@ -2068,12 +2163,86 @@ void main() {
       }
     }
   }
+  var hum = null;
+  var humSeconds = 10;
+  function showHum(active, level2 = 0) {
+    const button = byId("melody-hum");
+    button.setAttribute("aria-pressed", String(active));
+    button.querySelector("span").textContent = active ? "Stop and find notes" : "Hum a melody";
+    setIcon(button, active ? "stop" : "mic");
+    byId("hum-level").style.setProperty("--level", level2.toFixed(3));
+  }
+  async function startHum() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      showMelodyDraft([], "The microphone is unavailable here. Open the online version, or choose a clip.");
+      return;
+    }
+    if (player.playing || startRequest) pause();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+    } catch {
+      showMelodyDraft([], "Microphone access was not allowed. You can choose a clip instead.");
+      return;
+    }
+    if (!melodyDialog.open) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    melodyRequest++;
+    melodyInput.value = "";
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    const meter = new AudioContext();
+    meter.resume().catch(() => {
+    });
+    const analyser = meter.createAnalyser();
+    analyser.fftSize = 1024;
+    meter.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    const began = performance.now();
+    let discard = false;
+    let level2 = 0;
+    const session = {
+      stop(cancel = false) {
+        discard = cancel;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
+    };
+    hum = session;
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onstop = () => {
+      cancelAnimationFrame(session.frame);
+      clearTimeout(session.timer);
+      stream.getTracks().forEach((track) => track.stop());
+      meter.close();
+      if (hum === session) hum = null;
+      showHum(false);
+      if (discard) return;
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      if (!blob.size) showMelodyDraft([], "Nothing was captured. Try humming again.");
+      else scanMelody(blob);
+    };
+    const listen = () => {
+      analyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (const sample of samples) energy += sample * sample;
+      level2 = Math.max(Math.min(1, Math.sqrt(energy / samples.length) * 6), level2 * 0.82);
+      const left = Math.max(0, Math.ceil(humSeconds - (performance.now() - began) / 1e3));
+      showHum(true, level2);
+      byId("melody-status").textContent = "Listening. Hum or whistle a few clear notes · " + left + " s";
+      session.frame = requestAnimationFrame(listen);
+    };
+    recorder.start(250);
+    session.timer = setTimeout(() => session.stop(), humSeconds * 1e3);
+    showMelodyDraft([], "Listening. Hum or whistle a few clear notes.");
+    listen();
+  }
   function useMelody(melody) {
     melodyRequest++;
     melodyDialog.close();
-    focusPath = null;
     pausedAt = 0;
-    applySettings({ ...settings, melody }, "grow", 0);
+    editTree({ ...settings, melody }, "grow", 0, null);
     if (player.playing) {
       clearTimeout(replaceTimer);
       player.play(score, 0);
@@ -2097,11 +2266,10 @@ void main() {
       notify(describe(branch) + " is already a base case.");
       return;
     } else {
-      for (const path of [...pruned]) if (path.startsWith(branch.path)) pruned.delete(path);
       pruned.add(branch.path);
-      notify(describe(branch) + " is now a base case. Its voice holds and the levels above it rest.");
+      notify(describe(branch) + " becomes a base case. Its descendant notes drop out.");
     }
-    applySettings({ ...settings, pruned: [...pruned] });
+    editTree({ ...settings, pruned: [...pruned] });
   }
   function listenInside(index) {
     const branch = score.branches[index];
@@ -2182,23 +2350,92 @@ void main() {
     const inhale = guide.path.endsWith("L");
     return { inhale, amount: inhale ? smooth : 1 - smooth };
   }
-  function renderStack(stack, time) {
+  function callChain(branch) {
+    const chain = [];
+    for (let node = branch; node; node = score.branches[node.parent]) chain.unshift(node);
+    return chain;
+  }
+  function renderSource(stack, lines) {
+    const key = stack.map((node, i) => node.depth + ":" + lines[i]).join(".");
+    if (key === sourceKey) return;
+    sourceKey = key;
+    const top = lines.at(-1) ?? 0;
+    const rows = byId("source").children;
+    for (const row of rows) {
+      const line = Number(row.dataset.line);
+      const here = stack.filter((_, i) => lines[i] === line);
+      let frames = row.querySelector(".frames");
+      if (!frames) {
+        frames = document.createElement("span");
+        frames.className = "frames";
+        frames.setAttribute("aria-hidden", "true");
+        row.prepend(frames);
+      }
+      const shown = here.length > 3 ? [{ count: here.length }] : here;
+      frames.replaceChildren(...shown.map((node) => {
+        const marker = document.createElement("i");
+        marker.textContent = node.count ? "×" + node.count : node.depth;
+        if (node.count) marker.className = "count";
+        else if (node === stack.at(-1)) marker.className = "top";
+        return marker;
+      }));
+      row.classList.toggle("held", here.length > 0);
+      row.classList.toggle("on", line === top && stack.length > 0);
+      if (line === 2 && top === 2 && topLine !== 2 && !reducedMotion.matches) {
+        row.classList.remove("flash");
+        void row.offsetWidth;
+        row.classList.add("flash");
+      }
+    }
+    topLine = top;
+  }
+  function stepCall() {
+    if (player.playing || startRequest) pause();
+    const calls = score.branches;
+    let next;
+    if (stepping !== null) next = stepping + 1;
+    else if (pausedAt > 0) next = (stackAt(score, pausedAt).at(-1)?.index ?? -1) + 1;
+    else next = 0;
+    if (next >= calls.length) {
+      stepping = null;
+      pausedAt = 0;
+      selected = null;
+      notify(describe(calls[0]) + " returned. All " + calls.length + " calls have run. Step again to start over.");
+      paint();
+      return;
+    }
+    stepping = next;
+    steppedAt = seconds();
+    pausedAt = calls[next].start;
+    const branch = calls[next];
+    const why = branch.cut ? "pruned, so it is a base case" : branch.children.length ? "it calls left, then right" : "it is a base case";
+    byId("step-status").textContent = "Step " + (next + 1) + " of " + calls.length + ": " + describe(branch) + " sounds " + noteName(branch.midi) + ". " + why + ".";
+    touch(next);
+  }
+  function renderStack(stack, time, lines = []) {
     const count = byId("active-count");
-    const countLabel = stack.length === 0 ? "Idle" : player.playing ? stack.length + " active" : "Paused";
+    const countLabel = stack.length === 0 ? "Idle" : player.playing ? stack.length + " active" : stepping !== null ? "Step " + (stepping + 1) + " / " + score.branches.length : "Paused";
     if (count.textContent !== countLabel) count.textContent = countLabel;
-    const key = stack.map((node) => node.index).join(".") + "|" + score.version + "|" + score.generation + "|" + (score.focus ?? "");
+    const beats = stack.map((branch) => soundingNote(branch, time).midi);
+    const key = stack.map((node) => node.index).join(".") + "|" + beats.join(".") + "|" + lines.join("") + "|" + score.version + "|" + score.generation + "|" + (score.focus ?? "");
     const list = byId("stack");
     if (key !== stackKey) {
       stackKey = key;
-      list.replaceChildren(...stack.map((node) => {
+      list.replaceChildren(...stack.map((node, index) => {
         const item = document.createElement("li");
         item.style.setProperty("--depth", node.depth);
         const name = document.createElement("span");
         name.className = "frame-name";
         name.textContent = describe(node);
+        if (lines[index]) {
+          const line = document.createElement("span");
+          line.className = "frame-line";
+          line.textContent = ":" + lines[index];
+          name.append(line);
+        }
         const note = document.createElement("span");
         note.className = "frame-note";
-        note.textContent = noteName(node.midi);
+        note.textContent = noteName(beats[index]);
         item.append(name, note);
         if (node.cut) item.classList.add("cut");
         if (node.melodyLead) item.classList.add("melodic");
@@ -2269,17 +2506,26 @@ void main() {
     }
     const time = currentTime();
     const started = player.playing || pausedAt > 0;
-    const stack = started ? stackAt(score, time) : [];
+    const stepped = !player.playing && stepping !== null ? score.branches[stepping] : null;
+    const stack = stepped ? callChain(stepped) : started ? stackAt(score, time) : [];
+    const fresh = stepped ? now - steppedAt < 0.6 : false;
+    const lines = sourceLines(stack, stepped ? fresh : time - (stack.at(-1)?.start ?? 0) < 0.35);
     if (player.playing) {
       const ids = new Set(stack.map((node) => node.index));
       for (const node of stack) {
         if (!previousStack.has(node.index)) onsets.set(node.index, now - Math.max(0, Math.min(0.5, time - node.start)));
       }
       const leaf = stack.at(-1);
-      if (leaf && !previousStack.has(leaf.index)) echoes.push({ time: now, pan: leaf.pan, strength: 0.75 });
+      const lead = leaf?.melodyLead ? soundingNote(leaf, time) : null;
+      if (leaf && (!previousStack.has(leaf.index) || lead && lead !== previousLead)) {
+        if (lead) onsets.set(leaf.index, now);
+        echoes.push({ time: now, pan: leaf.pan, strength: 0.75 });
+      }
+      previousLead = lead;
       previousStack = ids;
     } else {
       previousStack = /* @__PURE__ */ new Set();
+      previousLead = null;
     }
     for (const [index, at] of onsets) if (now - at > 3) onsets.delete(index);
     echoes = echoes.filter((echo) => now - echo.time < 2).slice(-6);
@@ -2290,8 +2536,8 @@ void main() {
     garden.draw({
       now,
       reduced: reducedMotion.matches,
-      time: player.playing ? time : null,
-      stack: player.playing ? stack : [],
+      time: player.playing ? time : stepped ? time + 1e-3 : null,
+      stack: player.playing || stepped ? stack : [],
       onsets: ages,
       cursor,
       trail,
@@ -2302,7 +2548,8 @@ void main() {
       tool,
       echoes: echoes.map((echo) => ({ age: now - echo.time, pan: echo.pan, strength: echo.strength }))
     });
-    renderStack(stack, time);
+    renderStack(stack, time, lines);
+    renderSource(stack, lines);
     drawIcicle(stack, time);
     if (document.activeElement !== seek) seek.value = time;
     seek.setAttribute("aria-valuetext", clock(time) + " of " + clock(score.cycle));
@@ -2313,12 +2560,13 @@ void main() {
       cue.textContent = breath.inhale ? "Breathe in" : "Breathe out";
       cue.style.setProperty("--breath", breath.amount.toFixed(3));
     }
-    const branch = score.branches[hover ?? selected] ?? (player.playing ? stack.at(-1) : null);
-    const note = branch ? noteName(branch.midi) : "♪";
+    const picked = score.branches[hover ?? selected];
+    const branch = picked ?? (player.playing ? stack.at(-1) : null);
+    const note = branch ? noteName(picked ? picked.midi : soundingNote(branch, time).midi) : "♪";
     if (byId("branch-note").textContent !== note) byId("branch-note").textContent = note;
     const detail = branch ? describe(branch) + " · level " + branch.depth + " · " + voiceFor(score.scene, branch.depth) + (branch.cut ? " · pruned" : branch.melodyLead ? " · melody" : "") : "Tap or drag across branches";
     if (byId("branch-detail").textContent !== detail) byId("branch-detail").textContent = detail;
-    if (player.playing || garden.animating(now) || trail.length || onsets.size || echoes.length || now < activeUntil) {
+    if (player.playing || garden.animating(now) || trail.length || onsets.size || echoes.length || now < activeUntil || fresh) {
       frame = requestAnimationFrame(tick);
     }
   }
@@ -2362,7 +2610,7 @@ void main() {
     } finally {
       busy = false;
       button.disabled = false;
-      button.querySelector("span").textContent = "WAV";
+      button.querySelector("span").textContent = "Score WAV";
     }
   }
   function saveMidi() {
@@ -2381,47 +2629,53 @@ void main() {
   }
   async function shareLink() {
     const base = location.protocol === "file:" ? "https://tanzamul-azad.github.io/StillWater/" : location.href.split("#")[0];
-    const url = base + toHash(settings, focusPath, score.generation);
+    const url = base + scoreHash();
     try {
       await navigator.clipboard.writeText(url);
-      notify("Link copied. It regrows this exact tree.");
+      notify("Link copied with this tree and listening mix.");
     } catch {
-      window.prompt("Copy this link to share your tree.", url);
+      window.prompt("Copy this link to share your tree and mix.", url);
     }
   }
   async function toggleRecording() {
     const button = byId("record");
-    if (player.recording) {
-      button.setAttribute("aria-pressed", "false");
-      setIcon(button, "record");
-      button.querySelector("span").textContent = "Record what you hear";
-      const blob = await player.stopRecording();
-      if (!blob) return;
-      try {
-        const buffer = await player.context.decodeAudioData(await blob.arrayBuffer());
-        download(encodeWave(buffer), fileStem() + "-session.wav");
-        notify("Saved your session, play-along included, as a WAV.");
-      } catch {
-        const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
-        download(blob, fileStem() + "-session." + extension);
-        notify("Saved your session recording.");
-      }
-      return;
-    }
+    if (button.hasAttribute("aria-busy")) return;
+    button.setAttribute("aria-busy", "true");
     try {
-      await wake(0.09);
+      if (player.recording) {
+        const name = fileStem() + "-session";
+        button.querySelector("span").textContent = "Saving…";
+        const blob = await player.stopRecording();
+        if (!blob?.size) {
+          notify("No audio was captured. Try recording again.");
+          return;
+        }
+        try {
+          const buffer = await player.context.decodeAudioData(await blob.arrayBuffer());
+          download(encodeWave(buffer), name + ".wav");
+          notify("Saved the performance as a WAV.");
+        } catch {
+          const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+          download(blob, name + "." + extension);
+          notify("Saved your session recording.");
+        }
+      } else {
+        await wake(0.09);
+        if (!player.startRecording()) {
+          notify("Live recording is unavailable in this browser. Score WAV is available.");
+          return;
+        }
+        notify("Recording your playing and any score or ambience you hear.");
+      }
     } catch {
-      notify("Audio is unavailable in this browser.");
-      return;
+      notify("The recording could not be completed.");
+    } finally {
+      const active = Boolean(player.recording);
+      button.removeAttribute("aria-busy");
+      button.setAttribute("aria-pressed", String(active));
+      setIcon(button, active ? "stop" : "record", active ? "Stop and save performance" : "Record performance");
+      button.querySelector("span").textContent = active ? "Stop & save" : "Record";
     }
-    if (!player.startRecording()) {
-      notify("This browser cannot record live audio. Use the WAV export instead.");
-      return;
-    }
-    button.setAttribute("aria-pressed", "true");
-    setIcon(button, "stop");
-    button.querySelector("span").textContent = "Stop and save";
-    notify("Recording everything you hear, including your play-along.");
   }
   function setCalm(on) {
     body.dataset.calm = String(on);
@@ -2453,16 +2707,39 @@ void main() {
     }, 3200);
   }
   for (const key of sliders) {
-    byId(key).addEventListener("input", () => applySettings({ ...settings, [key]: Number(byId(key).value) }));
+    const input = byId(key);
+    input.addEventListener("input", () => {
+      const value = Number(input.value);
+      if (value === settings[key]) return;
+      if (editedSlider !== key) rememberTree();
+      editedSlider = key;
+      applySettings({ ...settings, [key]: value });
+    });
+    for (const event of ["change", "blur"]) {
+      input.addEventListener(event, () => {
+        if (editedSlider === key) editedSlider = null;
+      });
+    }
   }
-  byId("seed").addEventListener("change", (event) => applySettings({ ...settings, seed: event.target.value || scenes[settings.scene].defaults.seed, pruned: [] }, "grow"));
+  byId("seed").addEventListener("change", (event) => {
+    const seed = event.target.value || scenes[settings.scene].defaults.seed;
+    if (seed !== settings.seed) editTree({ ...settings, seed, pruned: [] }, "grow", void 0, null);
+    event.target.value = settings.seed;
+  });
   byId("seed").addEventListener("keydown", (event) => {
     if (event.key === "Enter") event.target.blur();
   });
   byId("shuffle").addEventListener("click", () => {
     const options = words.filter((word) => word !== settings.seed);
-    applySettings({ ...settings, seed: options[Math.floor(Math.random() * options.length)], pruned: [] }, "grow");
+    editTree({ ...settings, seed: options[Math.floor(Math.random() * options.length)], pruned: [] }, "grow", void 0, null);
   });
+  byId("reset-tree").addEventListener("click", () => {
+    editTree({ ...settings, ...scenes[settings.scene].defaults, pruned: [] }, "grow", 0, null);
+    notify("Tree reset to the current soundscape’s starting shape.");
+  });
+  undoButton.addEventListener("click", undoTree);
+  byId("step").addEventListener("click", stepCall);
+  byId("shape-tree").addEventListener("click", () => byId("depth").focus());
   for (const button of document.querySelectorAll("[data-scene]")) button.addEventListener("click", () => chooseScene(button.dataset.scene));
   playButton.addEventListener("click", togglePlay);
   byId("restart").addEventListener("click", () => {
@@ -2480,6 +2757,7 @@ void main() {
   seek.addEventListener("input", () => {
     const value = Number(seek.value);
     pausedAt = value;
+    stepping = null;
     if (player.playing) {
       clearTimeout(seekTimer);
       const target = score;
@@ -2489,20 +2767,20 @@ void main() {
     }
     paint();
   });
-  volume.addEventListener("input", () => {
-    if (Number(volume.value)) rememberedVolume = Number(volume.value);
-    if (warm) player.setVolume(level());
-    setIcon(byId("mute"), Number(volume.value) ? "volume" : "muted", Number(volume.value) ? "Mute" : "Unmute");
-    fillRange(volume);
-  });
+  volume.addEventListener("input", updateVolume);
+  volume.addEventListener("change", syncHash);
   byId("mute").addEventListener("click", () => {
     volume.value = Number(volume.value) ? 0 : rememberedVolume;
     volume.dispatchEvent(new Event("input"));
+    syncHash();
   });
   nature.addEventListener("input", () => {
     updateNature();
   });
-  nature.addEventListener("change", saveNature);
+  nature.addEventListener("change", () => {
+    saveNature();
+    syncHash();
+  });
   waterSounds.addEventListener("change", () => {
     waterEnabled = waterSounds.checked;
     player.setWater(waterEnabled);
@@ -2517,6 +2795,7 @@ void main() {
       localStorage.setItem(waterPreference, waterEnabled ? "on" : "off");
     } catch {
     }
+    syncHash();
   });
   byId("sleep").addEventListener("change", (event) => {
     clearTimeout(sleepTimer);
@@ -2558,17 +2837,20 @@ void main() {
   });
   byId("tool-prune").addEventListener("click", () => setTool("prune"));
   byId("about").addEventListener("click", () => byId("about-dialog").showModal());
-  byId("melody-open").addEventListener("click", () => {
+  function openMelody() {
     const notes = settings.melody;
-    showMelodyDraft(notes, notes.length ? notes.length + " notes in this tree." : "Choose a clip or try the built-in example.");
+    showMelodyDraft(notes, notes.length ? notes.length + " notes in this tree." : "Hum a few notes, choose a clip, or try the example.");
     byId("melody-clear").hidden = !notes.length;
     byId("melody-apply").disabled = true;
     melodyDialog.showModal();
-  });
+  }
+  byId("melody-open").addEventListener("click", openMelody);
   melodyDialog.addEventListener("close", () => {
     melodyRequest++;
     melodyInput.value = "";
+    hum?.stop(true);
   });
+  byId("melody-hum").addEventListener("click", () => hum ? hum.stop() : startHum());
   melodyInput.addEventListener("change", () => {
     const file = melodyInput.files?.[0];
     if (file) scanMelody(file);
@@ -2614,16 +2896,29 @@ void main() {
     start(0, true);
   });
   byId("silent").addEventListener("click", () => byId("intro").close());
+  byId("intro-hum").addEventListener("click", () => {
+    byId("intro").close();
+    openMelody();
+  });
   document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && !event.repeat && event.key.toLowerCase() === "z" && !event.target.closest?.("input, textarea, select, [contenteditable]") && !document.querySelector("dialog[open]") && !undoButton.disabled) {
+      event.preventDefault();
+      undoTree();
+      return;
+    }
     if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || document.querySelector("dialog[open]")) return;
     if (event.key === "Escape" && body.dataset.calm === "true") {
       setCalm(false);
       return;
     }
-    if (event.target.closest("input, textarea, select, button, [contenteditable]")) return;
+    if (event.target.closest?.("input, textarea, select, button, [contenteditable]")) return;
     if (event.key === " ") {
       event.preventDefault();
       togglePlay();
+      return;
+    }
+    if (event.key === "n" || event.key === "N") {
+      stepCall();
       return;
     }
     if (!byId("shortcuts").checked || event.key.length !== 1) return;
@@ -2691,17 +2986,30 @@ void main() {
   }, { passive: true });
   window.addEventListener("resize", paint);
   reducedMotion.addEventListener("change", paint);
+  window.addEventListener("hashchange", () => {
+    const shared2 = fromHash(location.hash);
+    if (!shared2) return;
+    treeHistory.length = 0;
+    editedSlider = null;
+    undoButton.disabled = true;
+    readMix(shared2.mix);
+    focusPath = shared2.focus;
+    pausedAt = 0;
+    applySettings(shared2.settings, "morph", shared2.generation);
+    updateVolume();
+    updateNature();
+  });
   try {
     waterEnabled = localStorage.getItem(waterPreference) !== "off";
     const savedNature = localStorage.getItem(naturePreference);
     if (savedNature !== null) nature.value = savedNature;
   } catch {
   }
-  player.setWater(waterEnabled);
   var shared = fromHash(location.hash);
+  readMix(shared?.mix);
   focusPath = shared?.focus ?? null;
   applySettings(shared?.settings ?? { scene: "lagoon", ...scenes.lagoon.defaults, pruned: [] }, "none", shared?.generation);
-  fillRange(volume);
+  updateVolume();
   updateNature();
   try {
     byId("intro").showModal();

@@ -4,7 +4,7 @@ import { encodeWave } from '../src/audio.mjs';
 import { detectMelody, melodyExample, melodyRate } from '../src/melody.mjs';
 import { encodeMidi } from '../src/midi.mjs';
 import {
-  branchPath, compose, focusOn, fromHash, minimumSplit, mutations, randomFrom, scenes, seedNumber, stackAt, subtree, toHash,
+  branchPath, compose, focusOn, fromHash, minimumSplit, mutations, randomFrom, scenes, seedNumber, soundingNote, sourceLines, stackAt, subtree, toHash,
 } from '../src/score.mjs';
 
 const base = scene => ({ scene, ...scenes[scene].defaults, pruned: [] });
@@ -91,7 +91,7 @@ test('the imported contour plays at the leaves and survives pruning, focus and l
   const settings = { ...base('cedar'), depth: 7, melody };
   const tree = compose(settings);
   const leads = tree.branches.filter(branch => branch.melodyLead);
-  const contour = leads.map(branch => branch.midi % 12).filter((midi, i, all) => midi !== all[i - 1]);
+  const contour = tree.events.filter(note => note.melodyLead).map(note => note.midi % 12).filter((midi, i, all) => midi !== all[i - 1]);
   assert.deepEqual(contour.slice(0, 4), [2, 6, 5, 9]);
   const cut = compose({ ...settings, pruned: ['L'] });
   assert.equal(byPath(cut).get('L').midi, byPath(tree).get('L').midi);
@@ -106,6 +106,29 @@ test('the imported contour plays at the leaves and survives pruning, focus and l
   const pitches = wide.melody.notes.map(note => note.midi);
   assert.equal(Math.max(...pitches) - Math.min(...pitches), 52);
   assert.ok(pitches.every(midi => midi >= 32 && midi <= 104));
+});
+
+test('the complete seven-note phrase plays through four leaves and survives a focused leaf and seek', () => {
+  const melody = detectMelody(melodyExample());
+  const tree = compose({ ...base('cedar'), depth: 2, melody });
+  const leaves = tree.branches.filter(branch => branch.melodyLead);
+  assert.equal(leaves.length, 4);
+  const events = tree.events.filter(note => note.melodyLead);
+  const contour = events.map(note => note.midi % 12).filter((midi, i, all) => midi !== all[i - 1]);
+  assert.deepEqual(contour, melody.map(([midi]) => midi % 12));
+  for (const event of events) {
+    const time = (event.start + event.end) / 2;
+    const branch = stackAt(tree, time).at(-1);
+    assert.equal(branch.index, event.index);
+    assert.equal(soundingNote(branch, time), event);
+  }
+  const leaf = leaves.find(branch => branch.notes.length > 1);
+  const inside = focusOn(tree, leaf.index);
+  assert.deepEqual(inside.events.map(note => note.midi), leaf.notes.map(note => note.midi));
+  assert.equal(inside.events[0].start, 0);
+  assert.ok(close(inside.events.at(-1).end, inside.cycle));
+  const cut = compose({ ...tree.settings, pruned: ['L'] });
+  assert.ok(cut.events.filter(note => note.melodyLead).every(note => !cut.branches[note.index].path.startsWith('L')));
 });
 
 test('pruning a call makes it a base case and leaves the rest of the tree untouched', () => {
@@ -178,6 +201,15 @@ test('a shared link restores the exact tree', () => {
   assert.equal(fromHash('#nothing'), null);
 });
 
+test('new links restore the listening mix and old links keep device preferences', () => {
+  const settings = base('lagoon');
+  assert.deepEqual(fromHash(toHash(settings, null)).mix, {});
+  const mix = { nature: 68, volume: 38, water: false };
+  assert.deepEqual(fromHash(toHash(settings, null, 0, mix)).mix, mix);
+  assert.deepEqual(fromHash('#scene=cedar&nature=0&volume=0&water=1').mix, { nature: 0, volume: 0, water: true });
+  assert.deepEqual(fromHash('#scene=cedar&nature=&volume=101&water=maybe').mix, {});
+});
+
 test('MIDI export writes one track per recursion level', async () => {
   const score = compose({ ...base('lagoon'), depth: 4 });
   const bytes = new Uint8Array(await encodeMidi([score], () => 'bell').arrayBuffer());
@@ -200,4 +232,28 @@ test('WAV export stores an interleaved stereo, 16-bit PCM stream', async () => {
   assert.equal(view.getInt16(46, true), 32767);
   assert.equal(view.getInt16(48, true), 8192);
   assert.equal(view.getInt16(50, true), -8192);
+});
+
+test('the score sounds the calls in call order, so stepping and listening agree', () => {
+  for (const scene of Object.keys(scenes)) {
+    const tree = compose({ ...base(scene), pruned: ['RL'] });
+    // Onsets get a few milliseconds of humanized timing, so compare the
+    // calls' logical start times.
+    const order = [...tree.events].sort((a, b) => a.start - b.start || a.depth - b.depth);
+    assert.deepEqual(order.map(note => note.index), tree.branches.map(branch => branch.index));
+    assert.ok(tree.events.every(note => Math.abs(note.at - note.start) < 0.05));
+  }
+});
+
+test('the debugger puts each waiting frame on the line that called its child', () => {
+  const tree = compose(base('lagoon'));
+  for (let t = 0.2; t < tree.cycle; t += 0.7) {
+    const stack = stackAt(tree, t);
+    const lines = sourceLines(stack, false);
+    stack.slice(0, -1).forEach((node, i) => {
+      assert.equal(lines[i], stack[i + 1].path.endsWith('L') ? 5 : 6);
+    });
+    assert.equal(lines.at(-1), 4);
+    assert.equal(sourceLines(stack, true).at(-1), 2);
+  }
 });

@@ -1,7 +1,7 @@
 // Notes are scheduled just ahead of the audio clock. Listening modes can
 // request another cycle, which joins the current one without a gap.
 import { createEngine, playNote, startAmbience } from './audio.mjs';
-import { stackAt } from './score.mjs';
+import { soundingNote, stackAt } from './score.mjs';
 
 const lookahead = 1.6;
 
@@ -80,7 +80,7 @@ export class Player {
     const cycle = { score, start, music, sparkle, cursor: 0, joined: false, fading: false };
     const now = this.now;
     // Calls already on the stack when playback begins mid-cycle re-enter softly.
-    const active = from > 0 ? new Set(stackAt(score, from)) : null;
+    const active = from > 0 ? new Set(stackAt(score, from).map(branch => soundingNote(branch, from))) : null;
     for (const note of score.events) {
       if (note.at >= from) break;
       cycle.cursor++;

@@ -15,6 +15,9 @@
     <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M9 6v12m6-12v12" stroke-width="2.5"/></symbol>
     <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2 6m-2-6V5m0 6h6"/></symbol>
+    <symbol id="icon-step" viewBox="0 0 24 24"><path d="M12 3v11m-4.5-4.5L12 14l4.5-4.5"/><circle cx="12" cy="19.5" r="1.8"/></symbol>
+    <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+    <symbol id="icon-undo"viewBox="0 0 24 24"><path d="m8 6-5 5 5 5m-5-5h12a5 5 0 0 1 0 10"/></symbol>
     <symbol id="icon-drift" viewBox="0 0 24 24"><path d="M3 15c3-4 6 4 9 0s6 4 9 0M3 9c3-4 6 4 9 0s6 4 9 0"/></symbol>
     <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9zm13 0a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12"/></symbol>
     <symbol id="icon-muted" viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9zm13 1 5 5m0-5-5 5"/></symbol>
@@ -37,7 +40,10 @@
   <header class="site-header">
     <div class="header-inner">
       <a class="wordmark" href="./" aria-label="Stillwater home"><span class="brand-mark" aria-hidden="true"></span>Stillwater</a>
-      <button class="text-button" id="about" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg>How it works</button>
+      <nav class="header-actions" aria-label="Workspace">
+        <button class="text-button" id="shape-tree" type="button">Shape tree</button>
+        <button class="text-button" id="about" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg>How it works</button>
+      </nav>
     </div>
   </header>
 
@@ -71,6 +77,8 @@
               <button type="button" id="tool-prune" aria-pressed="false" title="Prune tool: cut a branch into a base case"><svg class="icon" aria-hidden="true"><use href="#icon-scissors"/></svg><span>Prune</span></button>
             </div>
             <button class="branch-picker" id="browse" type="button">Explore</button>
+            <button class="icon-button stage-button" id="undo-tree" type="button" aria-label="Undo tree edit" title="Undo tree edit" disabled><svg class="icon" aria-hidden="true"><use href="#icon-undo"/></svg></button>
+            <button class="record-button" id="record" type="button" aria-label="Record performance" aria-pressed="false" title="Record performance"><svg class="icon" aria-hidden="true"><use href="#icon-record"/></svg><span>Record</span></button>
             <button class="icon-button stage-button" id="calm" type="button" aria-label="Enter calm mode" aria-pressed="false" title="Calm mode"><svg class="icon" aria-hidden="true"><use href="#icon-calm"/></svg><span id="calm-exit-label">Exit calm</span></button>
           </div>
         </div>
@@ -101,6 +109,23 @@
           <span id="active-count" class="active-count">Idle</span>
         </div>
         <ol id="stack" class="stack"></ol>
+        <figure class="source" aria-labelledby="source-title">
+          <figcaption class="source-heading">
+            <span id="source-title">grow.js</span>
+            <button type="button" class="step-button" id="step" aria-keyshortcuts="N" title="Step into the next call (N)"><svg class="icon" aria-hidden="true"><use href="#icon-step"/></svg><span>Step</span></button>
+          </figcaption>
+          <ol id="source" class="source-lines" aria-describedby="source-help">
+            <li data-line="1"><code><span class="k">function</span> grow(call) {</code></li>
+            <li data-line="2"><code>  sound(call);</code></li>
+            <li data-line="3"><code>  <span class="k">if</span> (baseCase(call))</code></li>
+            <li data-line="4"><code>    <span class="k">return</span>;</code></li>
+            <li data-line="5"><code>  grow(left(call));</code></li>
+            <li data-line="6"><code>  grow(right(call));</code></li>
+            <li data-line="7"><code>}</code></li>
+          </ol>
+          <p id="step-status" class="sr-only" role="status" aria-live="polite"></p>
+          <p id="source-help" class="sr-only">The markers show the line where each active call is paused. The highlighted line belongs to the deepest call.</p>
+        </figure>
         <div class="stage-scene">
           <span id="scene-name">Moonlit Lagoon</span>
           <span id="scene-scale">D major pentatonic</span>
@@ -143,10 +168,13 @@
             <button class="icon-button seed-button" id="shuffle" type="button" aria-label="Random seed" title="Random seed"><svg class="icon" aria-hidden="true"><use href="#icon-dice"/></svg></button>
           </div>
           <p id="seed-help" class="sr-only">Type your name to grow your own tree.</p>
-          <button class="melody-button" id="melody-open" type="button" aria-haspopup="dialog">
-            <svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg>
-            <span id="melody-trigger-label">Plant a melody</span>
-          </button>
+          <div class="recursion-actions">
+            <button class="melody-button" id="melody-open" type="button" aria-haspopup="dialog">
+              <svg class="icon" aria-hidden="true"><use href="#icon-wave"/></svg>
+              <span id="melody-trigger-label">Plant a melody</span>
+            </button>
+            <button class="text-button" id="reset-tree" type="button" title="Reset shape, seed and pruning to the preset">Reset tree</button>
+          </div>
         </section>
 
         <section class="settings-section" aria-labelledby="listening-title">
@@ -176,7 +204,7 @@
         </section>
 
         <section class="settings-section" aria-labelledby="keep-title">
-          <h2 id="keep-title">Export &amp; record</h2>
+          <h2 id="keep-title">Export &amp; share</h2>
           <div class="export-row">
             <label class="sr-only" for="export-length">Length of the WAV</label>
             <select id="export-length">
@@ -184,14 +212,13 @@
               <option value="3">Three drifting cycles</option>
               <option value="6">Six drifting cycles</option>
             </select>
-            <button class="download-button" id="download" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg><span>WAV</span></button>
+            <button class="download-button" id="download" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg><span>Score WAV</span></button>
           </div>
           <div class="share-grid">
             <button class="small-button" id="midi" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-midi"/></svg>MIDI</button>
             <button class="small-button" id="postcard" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-image"/></svg>Postcard</button>
             <button class="small-button" id="share" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-link"/></svg>Link</button>
           </div>
-          <button class="record-button" id="record" type="button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-record"/></svg><span>Record what you hear</span></button>
         </section>
       </section>
     </div>
@@ -201,10 +228,11 @@
 
   <dialog id="intro" class="intro" aria-labelledby="intro-title">
     <h2 id="intro-title">Stillwater</h2>
-    <p class="intro-line">Each branch is a call with its own voice. Play the tree yourself or hear how those voices fit together.</p>
+    <p class="intro-line">A recursive function that you can hear. Every branch is a call with its own voice, and the chord is the live call stack. Step through the calls, play the branches, or hum a tune and grow a tree from it.</p>
     <div class="intro-actions">
-      <button type="button" class="begin-button" id="silent"><svg class="icon" aria-hidden="true"><use href="#icon-hand"/></svg>Play by hand</button>
-      <button type="button" class="text-button" id="begin">Play the score</button>
+      <button type="button" class="begin-button" id="begin"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg>Play the score</button>
+      <button type="button" class="text-button" id="intro-hum"><svg class="icon" aria-hidden="true"><use href="#icon-mic"/></svg>Hum a tree</button>
+      <button type="button" class="text-button" id="silent"><svg class="icon" aria-hidden="true"><use href="#icon-hand"/></svg>Play by hand</button>
     </div>
   </dialog>
 
@@ -219,9 +247,11 @@
   grow(child(call, early, +interval));   <span class="c">// left: rises</span>
   grow(child(call, late,  -interval));   <span class="c">// right: falls</span>
 }                              <span class="c">// pop: the voice falls silent</span></code></pre>
-    <p><strong>The chord is the stack.</strong> The trunk spans the whole cycle as a low drone. Its children split that time, and so on. At any moment exactly one branch per level is sounding, so you hear the active calls from trunk to leaf: slow harmony at the bottom, quick melody at the top.</p>
+    <p><strong>The chord follows the stack.</strong> The trunk spans the whole cycle as a low drone. Its children divide that time. The active branches schedule the notes you hear, from slow harmony near the trunk to quick melody at the leaves. Echoes and releases can linger.</p>
     <p><strong>Parameters.</strong> Depth adds voices. Sway sets how each call shares its time, so it shapes both the rhythm and the tree. Spread sets the melodic interval and the stereo width. The seed, a number or any word, makes the variation repeatable.</p>
-    <p><strong>Pruning</strong> turns a call into a base case. Its voice holds longer and the levels above it rest. <strong>Listening inside</strong> plays one branch as a full cycle, because every subtree is a complete composition.</p>
+    <p><strong>Pruning</strong> turns a call into a base case. The branch keeps its own note and time while its descendants drop out. Use <strong>Undo</strong> to restore a tree edit. <strong>Listening inside</strong> plays one branch as a full cycle.</p>
+    <p><strong>Step</strong> (or N) runs one call at a time, like a debugger. The markers in <code>grow.js</code> show where each frame is paused, and every step plays that call's note. The score plays the same calls in the same order, spread out over time.</p>
+    <p><strong>Hum a tree.</strong> Under Plant a melody, hum a tune for a few seconds. Its notes become the leaves of a new tree. The audio stays on your device.</p>
     <p><strong>Drift</strong> changes one gene per cycle: one call swaps the direction of its intervals, and every few cycles the key shifts. The breathing guide follows the recursion. Each rise is a left call and each fall is a right call.</p>
     <label class="check"><input id="shortcuts" type="checkbox" checked> Letter keys A–K play along</label>
   </dialog>
@@ -242,8 +272,12 @@
   <dialog id="melody-dialog" aria-labelledby="melody-title">
     <form method="dialog"><button class="icon-button dialog-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></form>
     <h2 id="melody-title">Plant a melody</h2>
-    <p id="melody-help">Choose a short clip of humming, solo vocals, or one instrument. Stillwater reads the first 12 seconds on this device.</p>
-    <label class="clip-label" for="melody-file">Audio clip</label>
+    <p id="melody-help">Hum, sing or whistle for up to 10 seconds, or choose a short clip of one voice or instrument. Stillwater finds the notes on this device and grows a tree that plays them at its leaves.</p>
+    <div class="hum-row">
+      <button class="hum-button" id="melody-hum" type="button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-mic"/></svg><span>Hum a melody</span></button>
+      <span class="hum-meter" aria-hidden="true"><span id="hum-level"></span></span>
+    </div>
+    <label class="clip-label" for="melody-file">Or choose an audio clip</label>
     <input id="melody-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-describedby="melody-help">
     <p id="melody-status" class="melody-status" role="status">Choose a clip or try the built-in example.</p>
     <ol id="melody-notes" class="melody-notes" aria-label="Detected notes" hidden></ol>
