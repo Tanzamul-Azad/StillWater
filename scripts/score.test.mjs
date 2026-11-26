@@ -257,3 +257,53 @@ test('the debugger puts each waiting frame on the line that called its child', (
     assert.equal(sourceLines(stack, true).at(-1), 2);
   }
 });
+
+test('fibonacci recursion yields golden leaf counts and valid call stacks', () => {
+  const fibLeaves = [3, 5, 8, 13, 21, 34];
+  fibLeaves.forEach((expected, index) => {
+    const depth = index + 2;
+    const score = compose({ ...base('orchid'), rule: 'fibonacci', depth, sway: 50, cycle: 96 });
+    const leaves = score.branches.filter(branch => branch.leaf);
+    assert.equal(leaves.length, expected);
+    assert.equal(leaves[0].start, 0);
+    for (let i = 1; i < leaves.length; i++) assert.ok(close(leaves[i].start, leaves[i - 1].end));
+    assert.equal(leaves.at(-1).end, score.cycle);
+  });
+  const score = compose({ ...base('lagoon'), rule: 'fibonacci', depth: 5 });
+  for (let t = 0.25; t < score.cycle; t += 1.9) {
+    const stack = stackAt(score, t);
+    assert.equal(stack[0].index, 0);
+    assert.ok(stack.at(-1).leaf);
+  }
+  const restored = fromHash(toHash(score.settings, null));
+  assert.equal(restored.settings.rule, 'fibonacci');
+});
+
+test('ternary recursion splits into three children, maps debugger lines, and round-trips links', () => {
+  const score = compose({ ...base('cedar'), rule: 'ternary', depth: 3, cycle: 72 });
+  assert.equal(score.branches[0].children.length, 3);
+  const [left, mid, right] = score.branches[0].children.map(index => score.branches[index]);
+  assert.equal(left.path, 'L');
+  assert.equal(mid.path, 'M');
+  assert.equal(right.path, 'R');
+  assert.equal(left.start, 0);
+  assert.ok(close(left.end, mid.start));
+  assert.ok(close(mid.end, right.start));
+  assert.equal(right.end, score.cycle);
+
+  const leaves = score.branches.filter(branch => branch.leaf);
+  assert.equal(leaves.length, 27);
+  for (let i = 1; i < leaves.length; i++) assert.ok(close(leaves[i].start, leaves[i - 1].end));
+
+  const midStack = stackAt(score, (mid.start + mid.end) / 2);
+  assert.equal(sourceLines(midStack, false)[0], 6);
+  const rightStack = stackAt(score, (right.start + right.end) / 2);
+  assert.equal(sourceLines(rightStack, false)[0], 7);
+
+  const cut = compose({ ...score.settings, pruned: ['LM'] });
+  assert.ok(byPath(cut).get('LM').cut);
+  const restored = fromHash(toHash(cut.settings, 'M', 2));
+  assert.equal(restored.settings.rule, 'ternary');
+  assert.equal(restored.focus, 'M');
+  assert.deepEqual(restored.settings.pruned, ['LM']);
+});

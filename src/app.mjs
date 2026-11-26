@@ -74,6 +74,7 @@ let editedSlider = null;
 let stepping = null;
 let steppedAt = 0;
 let sourceKey = '';
+let sourceRule = 'binary';
 let topLine = 0;
 
 const quietListening = () => body.dataset.calm === 'true' || Number(byId('sleep').value) > 0;
@@ -253,6 +254,10 @@ function showSettings() {
   for (const button of document.querySelectorAll('[data-scene]')) {
     button.setAttribute('aria-pressed', String(button.dataset.scene === settings.scene));
   }
+  for (const button of document.querySelectorAll('[data-rule]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.rule === settings.rule));
+  }
+  renderRuleSource(settings.rule);
   byId('scene-name').textContent = scene.name;
   const melody = settings.melody.length;
   byId('scene-scale').textContent = melody ? 'Melody seed · ' + melody + ' notes' : scene.scaleName;
@@ -489,6 +494,13 @@ function togglePrune(index) {
     notify(describe(branch) + ' becomes a base case. Its descendant notes drop out.');
   }
   editTree({ ...settings, pruned: [...pruned] });
+  onsets.set(index, seconds());
+  if (Number(volume.value) > 0) {
+    const target = score;
+    wake(0.06).then(() => {
+      if (score === target) player.touch(target.scene, branch, true);
+    }).catch(() => {});
+  }
 }
 
 function listenInside(index) {
@@ -519,6 +531,22 @@ async function touch(index) {
   } catch (error) {
     console.error(error);
   }
+}
+
+async function touchWater(point) {
+  const target = score;
+  const width = Math.max(1, garden.width);
+  const ratio = Math.max(0, Math.min(1, point.x / width));
+  const pan = Math.max(-0.8, Math.min(0.8, (ratio - 0.5) * 1.6));
+  const scale = target.scene.scale;
+  const degree = Math.min(scale.length - 1, Math.floor(ratio * scale.length));
+  const midi = target.scene.root + 24 + scale[degree] + target.shift;
+  echoes.push({ time: seconds(), pan, strength: 0.9 });
+  paint();
+  try {
+    await wake(0.06);
+    if (score === target) player.touch(target.scene, { midi, depth: 7, pan, velocity: 0.62, start: 0, end: 0.45 }, true);
+  } catch {}
 }
 
 // Play-along keys use the scene's scale an octave above the root.
@@ -576,8 +604,56 @@ function breathAt(stack, time) {
   if (!guide) return null;
   const progress = Math.max(0, Math.min(1, (time - guide.start) / (guide.end - guide.start)));
   const smooth = 0.5 - 0.5 * Math.cos(Math.PI * progress);
-  const inhale = guide.path.endsWith('L');
-  return { inhale, amount: inhale ? smooth : 1 - smooth };
+  const last = guide.path.slice(-1);
+  const phase = last === 'L' ? 'in' : last === 'M' ? 'hold' : 'out';
+  const amount = phase === 'in' ? smooth : phase === 'hold' ? 0.92 + 0.08 * Math.sin(Math.PI * progress) : 1 - smooth;
+  return { inhale: phase === 'in', phase, amount };
+}
+
+const ruleSources = {
+  binary: [
+    [1, '<span class="k">function</span> grow(call) {'],
+    [2, '  sound(call);'],
+    [3, '  <span class="k">if</span> (baseCase(call))'],
+    [4, '    <span class="k">return</span>;'],
+    [5, '  grow(left(call));'],
+    [6, '  grow(right(call));'],
+    [7, '}'],
+  ],
+  fibonacci: [
+    [1, '<span class="k">function</span> grow(call, n) {'],
+    [2, '  sound(call);'],
+    [3, '  <span class="k">if</span> (n &lt;= 0 || cut(call))'],
+    [4, '    <span class="k">return</span>;'],
+    [5, '  grow(left(call), n - 1);'],
+    [6, '  grow(right(call), n - 2);'],
+    [7, '}'],
+  ],
+  ternary: [
+    [1, '<span class="k">function</span> grow(call) {'],
+    [2, '  sound(call);'],
+    [3, '  <span class="k">if</span> (baseCase(call))'],
+    [4, '    <span class="k">return</span>;'],
+    [5, '  grow(left(call));'],
+    [6, '  grow(mid(call));'],
+    [7, '  grow(right(call));'],
+    [8, '}'],
+  ],
+};
+
+function renderRuleSource(rule) {
+  if (rule === sourceRule) return;
+  sourceRule = rule;
+  sourceKey = '';
+  const list = byId('source');
+  list.replaceChildren(...(ruleSources[rule] ?? ruleSources.binary).map(([line, html]) => {
+    const item = document.createElement('li');
+    item.dataset.line = String(line);
+    const code = document.createElement('code');
+    code.innerHTML = html;
+    item.append(code);
+    return item;
+  }));
 }
 
 // The debugger view. A call that still has a running child is paused on
@@ -663,6 +739,8 @@ function renderStack(stack, time, lines = []) {
     stackKey = key;
     list.replaceChildren(...stack.map((node, index) => {
       const item = document.createElement('li');
+      item.dataset.index = String(node.index);
+      item.title = 'Click to play · Double-click to listen inside';
       item.style.setProperty('--depth', node.depth);
       const name = document.createElement('span');
       name.className = 'frame-name';
@@ -801,7 +879,7 @@ function tick() {
   const cue = byId('breath');
   cue.hidden = !breath;
   if (breath) {
-    cue.textContent = breath.inhale ? 'Breathe in' : 'Breathe out';
+    cue.textContent = breath.phase === 'in' ? 'Breathe in' : breath.phase === 'hold' ? 'Hold gently' : 'Breathe out';
     cue.style.setProperty('--breath', breath.amount.toFixed(3));
   }
 
@@ -943,6 +1021,7 @@ function setCalm(on) {
   body.dataset.calm = String(on);
   showMini();
   setIcon(byId('calm'), on ? 'close' : 'calm', on ? 'Leave calm mode' : 'Enter calm mode');
+  byId('calm-label').textContent = on ? 'Exit calm' : 'Calm';
   byId('calm').setAttribute('aria-pressed', String(on));
   cursor = hover = null;
   if (on) {
@@ -1000,8 +1079,48 @@ byId('reset-tree').addEventListener('click', () => {
 });
 undoButton.addEventListener('click', undoTree);
 byId('step').addEventListener('click', stepCall);
-byId('shape-tree').addEventListener('click', () => byId('depth').focus());
+byId('shape-tree').addEventListener('click', () => {
+  byId('recursion-title').scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'start' });
+  byId('depth').focus({ preventScroll: true });
+});
+byId('jump-export').addEventListener('click', () => {
+  byId('keep-title').scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'start' });
+  byId('download').focus({ preventScroll: true });
+});
 for (const button of document.querySelectorAll('[data-scene]')) button.addEventListener('click', () => chooseScene(button.dataset.scene));
+for (const button of document.querySelectorAll('[data-rule]')) {
+  button.addEventListener('click', () => {
+    const rule = button.dataset.rule;
+    if (rule === settings.rule) return;
+    const pruned = rule === 'ternary' ? settings.pruned : settings.pruned.filter(p => !p.includes('M'));
+    editTree({ ...settings, rule, pruned }, 'grow', 0, null);
+    notify(rule === 'fibonacci'
+      ? 'Fibonacci recursion: right branches skip one level for golden phrasing.'
+      : rule === 'ternary'
+        ? 'Ternary recursion: each call splits into three branches and waltz meter.'
+        : 'Binary recursion: each call splits into left and right.');
+  });
+}
+byId('stack').addEventListener('pointerover', event => {
+  const item = event.target.closest?.('li[data-index]');
+  if (!item) return;
+  hover = Number(item.dataset.index);
+  paint();
+});
+byId('stack').addEventListener('pointerleave', () => {
+  if (hover !== null) {
+    hover = null;
+    paint();
+  }
+});
+byId('stack').addEventListener('click', event => {
+  const item = event.target.closest?.('li[data-index]');
+  if (item) touch(Number(item.dataset.index));
+});
+byId('stack').addEventListener('dblclick', event => {
+  const item = event.target.closest?.('li[data-index]');
+  if (item) listenInside(Number(item.dataset.index));
+});
 
 playButton.addEventListener('click', togglePlay);
 byId('restart').addEventListener('click', () => {
@@ -1225,6 +1344,10 @@ document.addEventListener('keydown', event => {
     stepCall();
     return;
   }
+  if (event.key === 'c' || event.key === 'C') {
+    setCalm(body.dataset.calm !== 'true');
+    return;
+  }
   if (!byId('shortcuts').checked || event.key.length !== 1) return;
   const index = letters.indexOf(event.key.toLowerCase());
   if (index >= 0) playKey(index);
@@ -1250,6 +1373,7 @@ garden.canvas.addEventListener('pointerdown', event => {
   stroke = { id: event.pointerId, point: cursor, last: hover, time: seconds() };
   trail = [{ ...cursor, time: seconds() }];
   if (hover !== null) touch(hover);
+  else if (cursor.y >= garden.baseY - 8) touchWater(cursor);
 });
 garden.canvas.addEventListener('pointermove', event => {
   if (!event.isPrimary) return;
@@ -1267,7 +1391,12 @@ garden.canvas.addEventListener('pointermove', event => {
     stroke.last = index;
     stroke.time = now;
     touch(index);
-    break;
+    return;
+  }
+  if (hover === null && cursor.y >= garden.baseY - 8 && now - stroke.time >= 0.115) {
+    stroke.last = null;
+    stroke.time = now;
+    touchWater(cursor);
   }
 });
 function endStroke(event) {

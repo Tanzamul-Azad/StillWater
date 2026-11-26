@@ -143,6 +143,7 @@
       defaults: { depth: 5, sway: 40, spread: 42, taper: 76, cycle: 40, seed: "violet hour" }
     }
   };
+  var rules = ["binary", "fibonacci", "ternary"];
   var limits = {
     depth: [2, 7],
     sway: [34, 66],
@@ -235,7 +236,12 @@
   function sourceLines(stack, sounding) {
     return stack.map((node, i) => {
       const child = stack[i + 1];
-      if (child) return node.children[0] === child.index ? 5 : 6;
+      if (child) {
+        if (node.children.length === 3) {
+          return node.children[0] === child.index ? 5 : node.children[1] === child.index ? 6 : 7;
+        }
+        return node.children[0] === child.index ? 5 : 6;
+      }
       return sounding || node.children.length ? 2 : 4;
     });
   }
@@ -264,13 +270,13 @@
   function normalize(settings2) {
     const scene = Object.hasOwn(scenes, settings2.scene) ? settings2.scene : "lagoon";
     const base = scenes[scene].defaults;
-    const result = { scene };
+    const result = { scene, rule: rules.includes(settings2.rule) ? settings2.rule : "binary" };
     for (const key of Object.keys(limits)) {
       const value = Number(settings2[key]);
       result[key] = Number.isFinite(value) ? clamp(Math.round(value), ...limits[key]) : base[key];
     }
     result.seed = String(settings2.seed ?? base.seed).slice(0, 40) || base.seed;
-    result.pruned = [...new Set((settings2.pruned ?? []).filter((path) => /^[LR]{1,7}$/.test(path)))].sort();
+    result.pruned = [...new Set((settings2.pruned ?? []).filter((path) => /^[LRM]{1,7}$/.test(path)))].sort();
     result.melody = normalizeMelody(settings2.melody);
     return result;
   }
@@ -282,16 +288,18 @@
     const settings2 = normalize(input);
     const generation = generationNumber(input.generation);
     const scene = scenes[settings2.scene];
+    const rule = settings2.rule;
     const seed = seedNumber(settings2.seed);
     const flips = mutations(seed, generation, settings2.depth);
     const pruned = new Set(settings2.pruned);
     const shift = transposition(generation);
     const melody = prepareMelody(settings2, shift);
     const sway = settings2.sway / 100;
+    const minShare = rule === "ternary" ? Math.min(sway * 0.68, 0.32, 1 - sway * 0.68 - 0.32) : Math.min(sway, 1 - sway);
     const spread = settings2.spread * radians;
     const interval = intervalFor(settings2.spread);
     const branches = [];
-    function grow({ depth, parent, path, start: start2, end, x, y, heading, length, degree }) {
+    function grow({ depth, remaining, parent, path, start: start2, end, x, y, heading, length, degree }) {
       const random = randomFrom(seed ^ hashText("branch:" + path));
       const index = branches.length;
       const endX = x + Math.sin(heading) * length;
@@ -299,8 +307,9 @@
       const curve = (random() - 0.5) * length * 0.4;
       const span = end - start2;
       const cut = pruned.has(path);
-      const terminal = depth >= settings2.depth || span * Math.min(sway, 1 - sway) < minimumSplit;
+      const terminal = remaining <= 0 || span * minShare < minimumSplit;
       const base = terminal || cut;
+      const roll = depth === 0 ? 0 : Math.min(0.042, depth * 6e-3 + (depth > 1 ? random() * 4e-3 : 0));
       const branch = {
         index,
         parent,
@@ -308,7 +317,7 @@
         depth,
         start: start2,
         end,
-        at: depth > 2 ? Math.max(0, start2 + (random() - 0.5) * 0.03) : start2,
+        at: Math.min(Math.max(start2, end - 0.02), start2 + roll),
         x,
         y,
         endX,
@@ -337,17 +346,47 @@
       if (parent !== null) branches[parent].children.push(index);
       if (base) return;
       const flip = flips.has(path);
-      const middle = start2 + span * sway;
       const opening = spread * (0.92 + random() * 0.21) * (flip ? 0.74 : 1);
       const lean = flip ? (random() - 0.5) * 0.46 : 0;
       const nudge = random() < 0.16 ? random() < 0.5 ? -1 : 1 : 0;
+      const rise = flip ? interval.down + (interval.up === interval.down ? 1 : 0) : interval.up;
+      const fall = flip ? interval.up : interval.down;
+      if (rule === "ternary") {
+        const wL = sway * 0.68;
+        const wM = 0.32;
+        const t1 = start2 + span * wL;
+        const t2 = t1 + span * wM;
+        const midStep = flip ? -1 : interval.up > 1 ? 1 : 2;
+        const specs = [
+          { tag: "L", childStart: start2, childEnd: t1, share: wL, step: rise + nudge, angle: -opening + lean },
+          { tag: "M", childStart: t1, childEnd: t2, share: wM, step: midStep, angle: (random() - 0.5) * opening * 0.32 + lean * 0.5 },
+          { tag: "R", childStart: t2, childEnd: end, share: 1 - wL - wM, step: -fall, angle: opening + lean }
+        ];
+        for (const spec of specs) {
+          grow({
+            depth: depth + 1,
+            remaining: remaining - 1,
+            parent: index,
+            path: path + spec.tag,
+            start: spec.childStart,
+            end: spec.childEnd,
+            x: endX,
+            y: endY,
+            heading: clamp(heading * 0.66 + spec.angle, -1.47, 1.47),
+            length: length * (settings2.taper / 100) * Math.sqrt(2.4 * spec.share) * (0.92 + random() * 0.14),
+            degree: degree + spec.step
+          });
+        }
+        return;
+      }
+      const middle = start2 + span * sway;
       for (const side of [-1, 1]) {
         const left = side < 0;
-        const rise = flip ? interval.down + (interval.up === interval.down ? 1 : 0) : interval.up;
-        const fall = flip ? interval.up : interval.down;
         const step = left ? rise : -fall;
+        const nextRemaining = rule === "fibonacci" && !left ? remaining - 2 : remaining - 1;
         grow({
           depth: depth + 1,
+          remaining: nextRemaining,
           parent: index,
           path: path + (left ? "L" : "R"),
           start: left ? start2 : middle,
@@ -360,7 +399,8 @@
         });
       }
     }
-    grow({ depth: 0, parent: null, path: "", start: 0, end: settings2.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
+    const initialRemaining = rule === "ternary" ? Math.min(settings2.depth, 5) : settings2.depth;
+    grow({ depth: 0, remaining: initialRemaining, parent: null, path: "", start: 0, end: settings2.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
     const events = scoreEvents(branches);
     return { settings: settings2, scene, seed, generation, shift, interval, melody, branches, events, cycle: settings2.cycle, focus: null };
   }
@@ -430,6 +470,7 @@
   function toHash(settings2, focus, generation = 0, mix = {}) {
     const params = new URLSearchParams();
     for (const [key, name] of Object.entries(hashKeys)) params.set(name, settings2[key]);
+    if (settings2.rule && settings2.rule !== "binary") params.set("rule", settings2.rule);
     if (settings2.pruned.length) params.set("cut", settings2.pruned.join("."));
     if (settings2.melody?.length) params.set("melody", settings2.melody.map((note) => note.join(":")).join("."));
     if (focus) params.set("inside", focus);
@@ -445,6 +486,7 @@
     if (!params.has("scene")) return null;
     const raw = { pruned: (params.get("cut") ?? "").split(".").filter(Boolean) };
     for (const [key, name] of Object.entries(hashKeys)) if (params.has(name)) raw[key] = params.get(name);
+    if (params.has("rule")) raw.rule = params.get("rule");
     const phrase = params.get("melody");
     if (phrase && phrase.length <= maxMelodyNotes * 8 && /^\d{2}:\d{1,4}(\.\d{2}:\d{1,4})*$/.test(phrase)) {
       raw.melody = phrase.split(".").map((note) => note.split(":").map(Number));
@@ -459,7 +501,7 @@
     }
     const water = params.get("water");
     if (water === "0" || water === "1") mix.water = water === "1";
-    return { settings: settings2, mix, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get("generation")) };
+    return { settings: settings2, mix, focus: inside && /^[LRM]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get("generation")) };
   }
 
   // src/audio.mjs
@@ -860,7 +902,7 @@
     };
   }
   var tailSeconds = 6;
-  async function renderCycle(score2, nature2, water) {
+  async function renderRawCycle(score2, nature2, water, { fadeIn, holdAmbience } = {}) {
     const total = score2.cycle + tailSeconds;
     const offline = new OfflineAudioContext(2, Math.ceil(total * sampleRate), sampleRate);
     const engine = createEngine(offline, offline.destination, score2.seed);
@@ -868,10 +910,11 @@
     engine.water.gain.value = water ? 1 : 0;
     if (nature2 > 0) {
       const scene = score2.settings.scene;
-      const bed = startAmbience(offline, engine, scene, 0, scene === "cedar" ? 0.9 : 2.5);
-      for (const gain2 of bed.gains) {
-        gain2.gain.setValueAtTime(1, score2.cycle);
-        gain2.gain.linearRampToValueAtTime(0, total - 0.2);
+      const bed = startAmbience(offline, engine, scene, 0, fadeIn ?? (scene === "cedar" ? 0.9 : 2.2));
+      const fadeOutAt = holdAmbience ? Math.min(total - 0.5, score2.cycle + 1.25) : score2.cycle;
+      for (const gain of bed.gains) {
+        gain.gain.setValueAtTime(1, fadeOutAt);
+        gain.gain.linearRampToValueAtTime(0, total - 0.2);
       }
     }
     for (const note of score2.events) playNote(offline, engine, score2.scene, note, note.at + 0.05);
@@ -883,12 +926,7 @@
       const data = buffer.getChannelData(channel);
       for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
     }
-    const gain = Math.min(0.84 / Math.max(peak, 1e-3), 3);
-    for (let channel = 0; channel < 2; channel++) {
-      const data = buffer.getChannelData(channel);
-      for (let i = 0; i < data.length; i++) data[i] *= gain;
-    }
-    return buffer;
+    return { buffer, peak };
   }
   function waveHeader(channels, rate, frames) {
     const frameSize = 2 * channels;
@@ -930,22 +968,33 @@
   async function renderWave(scores, { nature: nature2 = 0, water = true, onCycle } = {}) {
     const duration = scores.reduce((sum, score2) => sum + score2.cycle, tailSeconds);
     if (scores.length === 1) {
-      return { blob: encodeWave(await renderCycle(scores[0], nature2, water)), duration };
+      const { buffer, peak } = await renderRawCycle(scores[0], nature2, water);
+      const gain = Math.min(0.76 / Math.max(peak, 1e-3), 2.2);
+      for (let channel = 0; channel < 2; channel++) {
+        const data = buffer.getChannelData(channel);
+        for (let i = 0; i < data.length; i++) data[i] *= gain;
+      }
+      return { blob: encodeWave(buffer), duration };
     }
     const view = waveHeader(2, sampleRate, Math.round(duration * sampleRate));
     const overlap = Math.round(1.2 * sampleRate);
     let previous = null;
     let offset = 44;
+    let masterGain = null;
     for (const [index, score2] of scores.entries()) {
       onCycle?.(index + 1, scores.length);
-      const buffer = await renderCycle(score2, nature2, water);
+      const { buffer, peak } = await renderRawCycle(score2, nature2, water, {
+        fadeIn: index === 0 ? void 0 : 0.05,
+        holdAmbience: index < scores.length - 1
+      });
+      if (masterGain === null) masterGain = Math.min(0.76 / Math.max(peak, 1e-3), 2.2);
       const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
       const cycleFrames = Math.round(score2.cycle * sampleRate);
       const count = index === scores.length - 1 ? buffer.length : cycleFrames;
       for (let i = 0; i < count; i++) {
         const blend = previous && i < overlap ? i / overlap : 1;
         for (let channel = 0; channel < 2; channel++) {
-          const sample = blend === 1 ? channels[channel][i] : channels[channel][i] * blend + previous[channel][i] * (1 - blend);
+          const sample = (blend === 1 ? channels[channel][i] : channels[channel][i] * blend + previous[channel][i] * (1 - blend)) * masterGain;
           view.setInt16(offset, pcmSample(sample), true);
           offset += 2;
         }
@@ -1918,6 +1967,7 @@ void main() {
   var stepping = null;
   var steppedAt = 0;
   var sourceKey = "";
+  var sourceRule = "binary";
   var topLine = 0;
   var quietListening = () => body.dataset.calm === "true" || Number(byId("sleep").value) > 0;
   var player = new Player({
@@ -2075,6 +2125,10 @@ void main() {
     for (const button of document.querySelectorAll("[data-scene]")) {
       button.setAttribute("aria-pressed", String(button.dataset.scene === settings.scene));
     }
+    for (const button of document.querySelectorAll("[data-rule]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.rule === settings.rule));
+    }
+    renderRuleSource(settings.rule);
     byId("scene-name").textContent = scene.name;
     const melody = settings.melody.length;
     byId("scene-scale").textContent = melody ? "Melody seed · " + melody + " notes" : scene.scaleName;
@@ -2286,6 +2340,14 @@ void main() {
       notify(describe(branch) + " becomes a base case. Its descendant notes drop out.");
     }
     editTree({ ...settings, pruned: [...pruned] });
+    onsets.set(index, seconds());
+    if (Number(volume.value) > 0) {
+      const target = score;
+      wake(0.06).then(() => {
+        if (score === target) player.touch(target.scene, branch, true);
+      }).catch(() => {
+      });
+    }
   }
   function listenInside(index) {
     const branch = score.branches[index];
@@ -2312,6 +2374,22 @@ void main() {
       if (score === target) player.touch(target.scene, branch, true);
     } catch (error) {
       console.error(error);
+    }
+  }
+  async function touchWater(point) {
+    const target = score;
+    const width = Math.max(1, garden.width);
+    const ratio = Math.max(0, Math.min(1, point.x / width));
+    const pan = Math.max(-0.8, Math.min(0.8, (ratio - 0.5) * 1.6));
+    const scale = target.scene.scale;
+    const degree = Math.min(scale.length - 1, Math.floor(ratio * scale.length));
+    const midi = target.scene.root + 24 + scale[degree] + target.shift;
+    echoes.push({ time: seconds(), pan, strength: 0.9 });
+    paint();
+    try {
+      await wake(0.06);
+      if (score === target) player.touch(target.scene, { midi, depth: 7, pan, velocity: 0.62, start: 0, end: 0.45 }, true);
+    } catch {
     }
   }
   function keyNote(index) {
@@ -2363,8 +2441,54 @@ void main() {
     if (!guide) return null;
     const progress = Math.max(0, Math.min(1, (time - guide.start) / (guide.end - guide.start)));
     const smooth = 0.5 - 0.5 * Math.cos(Math.PI * progress);
-    const inhale = guide.path.endsWith("L");
-    return { inhale, amount: inhale ? smooth : 1 - smooth };
+    const last = guide.path.slice(-1);
+    const phase = last === "L" ? "in" : last === "M" ? "hold" : "out";
+    const amount = phase === "in" ? smooth : phase === "hold" ? 0.92 + 0.08 * Math.sin(Math.PI * progress) : 1 - smooth;
+    return { inhale: phase === "in", phase, amount };
+  }
+  var ruleSources = {
+    binary: [
+      [1, '<span class="k">function</span> grow(call) {'],
+      [2, "  sound(call);"],
+      [3, '  <span class="k">if</span> (baseCase(call))'],
+      [4, '    <span class="k">return</span>;'],
+      [5, "  grow(left(call));"],
+      [6, "  grow(right(call));"],
+      [7, "}"]
+    ],
+    fibonacci: [
+      [1, '<span class="k">function</span> grow(call, n) {'],
+      [2, "  sound(call);"],
+      [3, '  <span class="k">if</span> (n &lt;= 0 || cut(call))'],
+      [4, '    <span class="k">return</span>;'],
+      [5, "  grow(left(call), n - 1);"],
+      [6, "  grow(right(call), n - 2);"],
+      [7, "}"]
+    ],
+    ternary: [
+      [1, '<span class="k">function</span> grow(call) {'],
+      [2, "  sound(call);"],
+      [3, '  <span class="k">if</span> (baseCase(call))'],
+      [4, '    <span class="k">return</span>;'],
+      [5, "  grow(left(call));"],
+      [6, "  grow(mid(call));"],
+      [7, "  grow(right(call));"],
+      [8, "}"]
+    ]
+  };
+  function renderRuleSource(rule) {
+    if (rule === sourceRule) return;
+    sourceRule = rule;
+    sourceKey = "";
+    const list = byId("source");
+    list.replaceChildren(...(ruleSources[rule] ?? ruleSources.binary).map(([line, html]) => {
+      const item = document.createElement("li");
+      item.dataset.line = String(line);
+      const code = document.createElement("code");
+      code.innerHTML = html;
+      item.append(code);
+      return item;
+    }));
   }
   function callChain(branch) {
     const chain = [];
@@ -2439,6 +2563,8 @@ void main() {
       stackKey = key;
       list.replaceChildren(...stack.map((node, index) => {
         const item = document.createElement("li");
+        item.dataset.index = String(node.index);
+        item.title = "Click to play · Double-click to listen inside";
         item.style.setProperty("--depth", node.depth);
         const name = document.createElement("span");
         name.className = "frame-name";
@@ -2577,7 +2703,7 @@ void main() {
     const cue = byId("breath");
     cue.hidden = !breath;
     if (breath) {
-      cue.textContent = breath.inhale ? "Breathe in" : "Breathe out";
+      cue.textContent = breath.phase === "in" ? "Breathe in" : breath.phase === "hold" ? "Hold gently" : "Breathe out";
       cue.style.setProperty("--breath", breath.amount.toFixed(3));
     }
     const picked = score.branches[hover ?? selected];
@@ -2701,6 +2827,7 @@ void main() {
     body.dataset.calm = String(on);
     showMini();
     setIcon(byId("calm"), on ? "close" : "calm", on ? "Leave calm mode" : "Enter calm mode");
+    byId("calm-label").textContent = on ? "Exit calm" : "Calm";
     byId("calm").setAttribute("aria-pressed", String(on));
     cursor = hover = null;
     if (on) {
@@ -2760,8 +2887,44 @@ void main() {
   });
   undoButton.addEventListener("click", undoTree);
   byId("step").addEventListener("click", stepCall);
-  byId("shape-tree").addEventListener("click", () => byId("depth").focus());
+  byId("shape-tree").addEventListener("click", () => {
+    byId("recursion-title").scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+    byId("depth").focus({ preventScroll: true });
+  });
+  byId("jump-export").addEventListener("click", () => {
+    byId("keep-title").scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+    byId("download").focus({ preventScroll: true });
+  });
   for (const button of document.querySelectorAll("[data-scene]")) button.addEventListener("click", () => chooseScene(button.dataset.scene));
+  for (const button of document.querySelectorAll("[data-rule]")) {
+    button.addEventListener("click", () => {
+      const rule = button.dataset.rule;
+      if (rule === settings.rule) return;
+      const pruned = rule === "ternary" ? settings.pruned : settings.pruned.filter((p) => !p.includes("M"));
+      editTree({ ...settings, rule, pruned }, "grow", 0, null);
+      notify(rule === "fibonacci" ? "Fibonacci recursion: right branches skip one level for golden phrasing." : rule === "ternary" ? "Ternary recursion: each call splits into three branches and waltz meter." : "Binary recursion: each call splits into left and right.");
+    });
+  }
+  byId("stack").addEventListener("pointerover", (event) => {
+    const item = event.target.closest?.("li[data-index]");
+    if (!item) return;
+    hover = Number(item.dataset.index);
+    paint();
+  });
+  byId("stack").addEventListener("pointerleave", () => {
+    if (hover !== null) {
+      hover = null;
+      paint();
+    }
+  });
+  byId("stack").addEventListener("click", (event) => {
+    const item = event.target.closest?.("li[data-index]");
+    if (item) touch(Number(item.dataset.index));
+  });
+  byId("stack").addEventListener("dblclick", (event) => {
+    const item = event.target.closest?.("li[data-index]");
+    if (item) listenInside(Number(item.dataset.index));
+  });
   playButton.addEventListener("click", togglePlay);
   byId("restart").addEventListener("click", () => {
     clearTimeout(seekTimer);
@@ -2978,6 +3141,10 @@ void main() {
       stepCall();
       return;
     }
+    if (event.key === "c" || event.key === "C") {
+      setCalm(body.dataset.calm !== "true");
+      return;
+    }
     if (!byId("shortcuts").checked || event.key.length !== 1) return;
     const index = letters.indexOf(event.key.toLowerCase());
     if (index >= 0) playKey(index);
@@ -2999,6 +3166,7 @@ void main() {
     stroke = { id: event.pointerId, point: cursor, last: hover, time: seconds() };
     trail = [{ ...cursor, time: seconds() }];
     if (hover !== null) touch(hover);
+    else if (cursor.y >= garden.baseY - 8) touchWater(cursor);
   });
   garden.canvas.addEventListener("pointermove", (event) => {
     if (!event.isPrimary) return;
@@ -3016,7 +3184,12 @@ void main() {
       stroke.last = index;
       stroke.time = now;
       touch(index);
-      break;
+      return;
+    }
+    if (hover === null && cursor.y >= garden.baseY - 8 && now - stroke.time >= 0.115) {
+      stroke.last = null;
+      stroke.time = now;
+      touchWater(cursor);
     }
   });
   function endStroke(event) {

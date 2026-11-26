@@ -429,7 +429,7 @@ export function startAmbience(context, engine, sceneKey, start, fade = 3) {
 
 const tailSeconds = 6;
 
-async function renderCycle(score, nature, water) {
+async function renderRawCycle(score, nature, water, { fadeIn, holdAmbience } = {}) {
   const total = score.cycle + tailSeconds;
   const offline = new OfflineAudioContext(2, Math.ceil(total * sampleRate), sampleRate);
   const engine = createEngine(offline, offline.destination, score.seed);
@@ -437,9 +437,10 @@ async function renderCycle(score, nature, water) {
   engine.water.gain.value = water ? 1 : 0;
   if (nature > 0) {
     const scene = score.settings.scene;
-    const bed = startAmbience(offline, engine, scene, 0, scene === 'cedar' ? 0.9 : 2.5);
+    const bed = startAmbience(offline, engine, scene, 0, fadeIn ?? (scene === 'cedar' ? 0.9 : 2.2));
+    const fadeOutAt = holdAmbience ? Math.min(total - 0.5, score.cycle + 1.25) : score.cycle;
     for (const gain of bed.gains) {
-      gain.gain.setValueAtTime(1, score.cycle);
+      gain.gain.setValueAtTime(1, fadeOutAt);
       gain.gain.linearRampToValueAtTime(0, total - 0.2);
     }
   }
@@ -452,12 +453,7 @@ async function renderCycle(score, nature, water) {
     const data = buffer.getChannelData(channel);
     for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
   }
-  const gain = Math.min(0.84 / Math.max(peak, 0.001), 3);
-  for (let channel = 0; channel < 2; channel++) {
-    const data = buffer.getChannelData(channel);
-    for (let i = 0; i < data.length; i++) data[i] *= gain;
-  }
-  return buffer;
+  return { buffer, peak };
 }
 
 function waveHeader(channels, rate, frames) {
@@ -501,26 +497,37 @@ export function encodeWave(buffer) {
 }
 
 // Reuse a one-cycle render budget and write straight to the final PCM file.
-// A short crossfade carries the outgoing reverb into the next cycle.
+// A short crossfade carries the outgoing reverb and ambience into the next cycle.
 export async function renderWave(scores, { nature = 0, water = true, onCycle } = {}) {
   const duration = scores.reduce((sum, score) => sum + score.cycle, tailSeconds);
   if (scores.length === 1) {
-    return { blob: encodeWave(await renderCycle(scores[0], nature, water)), duration };
+    const { buffer, peak } = await renderRawCycle(scores[0], nature, water);
+    const gain = Math.min(0.76 / Math.max(peak, 0.001), 2.2);
+    for (let channel = 0; channel < 2; channel++) {
+      const data = buffer.getChannelData(channel);
+      for (let i = 0; i < data.length; i++) data[i] *= gain;
+    }
+    return { blob: encodeWave(buffer), duration };
   }
   const view = waveHeader(2, sampleRate, Math.round(duration * sampleRate));
   const overlap = Math.round(1.2 * sampleRate);
   let previous = null;
   let offset = 44;
+  let masterGain = null;
   for (const [index, score] of scores.entries()) {
     onCycle?.(index + 1, scores.length);
-    const buffer = await renderCycle(score, nature, water);
+    const { buffer, peak } = await renderRawCycle(score, nature, water, {
+      fadeIn: index === 0 ? undefined : 0.05,
+      holdAmbience: index < scores.length - 1,
+    });
+    if (masterGain === null) masterGain = Math.min(0.76 / Math.max(peak, 0.001), 2.2);
     const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
     const cycleFrames = Math.round(score.cycle * sampleRate);
     const count = index === scores.length - 1 ? buffer.length : cycleFrames;
     for (let i = 0; i < count; i++) {
       const blend = previous && i < overlap ? i / overlap : 1;
       for (let channel = 0; channel < 2; channel++) {
-        const sample = blend === 1 ? channels[channel][i] : channels[channel][i] * blend + previous[channel][i] * (1 - blend);
+        const sample = (blend === 1 ? channels[channel][i] : channels[channel][i] * blend + previous[channel][i] * (1 - blend)) * masterGain;
         view.setInt16(offset, pcmSample(sample), true);
         offset += 2;
       }

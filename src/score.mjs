@@ -29,6 +29,8 @@ export const scenes = {
   },
 };
 
+export const rules = ['binary', 'fibonacci', 'ternary'];
+
 export const limits = {
   depth: [2, 7], sway: [34, 66], spread: [14, 56], taper: [56, 84], cycle: [24, 96],
 };
@@ -130,12 +132,17 @@ function scoreEvents(branches) {
 }
 
 // Lines of grow() as shown in the debugger: 2 sound(call), 4 return,
-// 5 grow(left(call)), 6 grow(right(call)). A frame with a running child is
-// paused on the line that called it.
+// 5 grow(left), 6 grow(mid/right), 7 grow(right) in ternary mode.
+// A frame with a running child is paused on the line that called it.
 export function sourceLines(stack, sounding) {
   return stack.map((node, i) => {
     const child = stack[i + 1];
-    if (child) return node.children[0] === child.index ? 5 : 6;
+    if (child) {
+      if (node.children.length === 3) {
+        return node.children[0] === child.index ? 5 : node.children[1] === child.index ? 6 : 7;
+      }
+      return node.children[0] === child.index ? 5 : 6;
+    }
     return sounding || node.children.length ? 2 : 4;
   });
 }
@@ -170,13 +177,13 @@ export function mutations(seed, generation, depth) {
 export function normalize(settings) {
   const scene = Object.hasOwn(scenes, settings.scene) ? settings.scene : 'lagoon';
   const base = scenes[scene].defaults;
-  const result = { scene };
+  const result = { scene, rule: rules.includes(settings.rule) ? settings.rule : 'binary' };
   for (const key of Object.keys(limits)) {
     const value = Number(settings[key]);
     result[key] = Number.isFinite(value) ? clamp(Math.round(value), ...limits[key]) : base[key];
   }
   result.seed = String(settings.seed ?? base.seed).slice(0, 40) || base.seed;
-  result.pruned = [...new Set((settings.pruned ?? []).filter(path => /^[LR]{1,7}$/.test(path)))].sort();
+  result.pruned = [...new Set((settings.pruned ?? []).filter(path => /^[LRM]{1,7}$/.test(path)))].sort();
   result.melody = normalizeMelody(settings.melody);
   return result;
 }
@@ -190,17 +197,21 @@ export function compose(input) {
   const settings = normalize(input);
   const generation = generationNumber(input.generation);
   const scene = scenes[settings.scene];
+  const rule = settings.rule;
   const seed = seedNumber(settings.seed);
   const flips = mutations(seed, generation, settings.depth);
   const pruned = new Set(settings.pruned);
   const shift = transposition(generation);
   const melody = prepareMelody(settings, shift);
   const sway = settings.sway / 100;
+  const minShare = rule === 'ternary'
+    ? Math.min(sway * 0.68, 0.32, 1 - sway * 0.68 - 0.32)
+    : Math.min(sway, 1 - sway);
   const spread = settings.spread * radians;
   const interval = intervalFor(settings.spread);
   const branches = [];
 
-  function grow({ depth, parent, path, start, end, x, y, heading, length, degree }) {
+  function grow({ depth, remaining, parent, path, start, end, x, y, heading, length, degree }) {
     const random = randomFrom(seed ^ hashText('branch:' + path));
     const index = branches.length;
     const endX = x + Math.sin(heading) * length;
@@ -208,11 +219,13 @@ export function compose(input) {
     const curve = (random() - 0.5) * length * 0.4;
     const span = end - start;
     const cut = pruned.has(path);
-    const terminal = depth >= settings.depth || span * Math.min(sway, 1 - sway) < minimumSplit;
+    const terminal = remaining <= 0 || span * minShare < minimumSplit;
     const base = terminal || cut;
+    // Gentle bass-to-treble stack roll so simultaneous push chords bloom smoothly.
+    const roll = depth === 0 ? 0 : Math.min(0.042, depth * 0.006 + (depth > 1 ? random() * 0.004 : 0));
     const branch = {
       index, parent, path, depth, start, end,
-      at: depth > 2 ? Math.max(0, start + (random() - 0.5) * 0.03) : start,
+      at: Math.min(Math.max(start, end - 0.02), start + roll),
       x, y, endX, endY,
       controlX: (x + endX) / 2 + Math.cos(heading) * curve,
       controlY: (y + endY) / 2 + Math.sin(heading) * curve,
@@ -240,21 +253,45 @@ export function compose(input) {
     if (parent !== null) branches[parent].children.push(index);
     if (base) return;
 
-    // The recursive case: split this call's time and grow two shorter calls.
+    // The recursive case: split this call's time and grow child calls.
     const flip = flips.has(path);
-    const middle = start + span * sway;
     const opening = spread * (0.92 + random() * 0.21) * (flip ? 0.74 : 1);
     const lean = flip ? (random() - 0.5) * 0.46 : 0;
     const nudge = random() < 0.16 ? (random() < 0.5 ? -1 : 1) : 0;
+    const rise = flip ? interval.down + (interval.up === interval.down ? 1 : 0) : interval.up;
+    const fall = flip ? interval.up : interval.down;
+
+    if (rule === 'ternary') {
+      const wL = sway * 0.68;
+      const wM = 0.32;
+      const t1 = start + span * wL;
+      const t2 = t1 + span * wM;
+      const midStep = flip ? -1 : (interval.up > 1 ? 1 : 2);
+      const specs = [
+        { tag: 'L', childStart: start, childEnd: t1, share: wL, step: rise + nudge, angle: -opening + lean },
+        { tag: 'M', childStart: t1, childEnd: t2, share: wM, step: midStep, angle: (random() - 0.5) * opening * 0.32 + lean * 0.5 },
+        { tag: 'R', childStart: t2, childEnd: end, share: 1 - wL - wM, step: -fall, angle: opening + lean },
+      ];
+      for (const spec of specs) {
+        grow({
+          depth: depth + 1, remaining: remaining - 1, parent: index, path: path + spec.tag,
+          start: spec.childStart, end: spec.childEnd,
+          x: endX, y: endY,
+          heading: clamp(heading * 0.66 + spec.angle, -1.47, 1.47),
+          length: length * (settings.taper / 100) * Math.sqrt(2.4 * spec.share) * (0.92 + random() * 0.14),
+          degree: degree + spec.step,
+        });
+      }
+      return;
+    }
+
+    const middle = start + span * sway;
     for (const side of [-1, 1]) {
       const left = side < 0;
-      // A drifted call reshapes its intervals. A plain left/right swap of a
-      // pentatonic step pair can land on the same pitches an octave apart.
-      const rise = flip ? interval.down + (interval.up === interval.down ? 1 : 0) : interval.up;
-      const fall = flip ? interval.up : interval.down;
       const step = left ? rise : -fall;
+      const nextRemaining = rule === 'fibonacci' && !left ? remaining - 2 : remaining - 1;
       grow({
-        depth: depth + 1, parent: index, path: path + (left ? 'L' : 'R'),
+        depth: depth + 1, remaining: nextRemaining, parent: index, path: path + (left ? 'L' : 'R'),
         start: left ? start : middle, end: left ? middle : end,
         x: endX, y: endY,
         heading: clamp(heading * 0.66 + side * opening + lean, -1.47, 1.47),
@@ -264,7 +301,8 @@ export function compose(input) {
     }
   }
 
-  grow({ depth: 0, parent: null, path: '', start: 0, end: settings.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
+  const initialRemaining = rule === 'ternary' ? Math.min(settings.depth, 5) : settings.depth;
+  grow({ depth: 0, remaining: initialRemaining, parent: null, path: '', start: 0, end: settings.cycle, x: 0, y: 0, heading: -0.05, length: 1, degree: 0 });
   const events = scoreEvents(branches);
   return { settings, scene, seed, generation, shift, interval, melody, branches, events, cycle: settings.cycle, focus: null };
 }
@@ -344,6 +382,7 @@ const mixFields = ['nature', 'volume'];
 export function toHash(settings, focus, generation = 0, mix = {}) {
   const params = new URLSearchParams();
   for (const [key, name] of Object.entries(hashKeys)) params.set(name, settings[key]);
+  if (settings.rule && settings.rule !== 'binary') params.set('rule', settings.rule);
   if (settings.pruned.length) params.set('cut', settings.pruned.join('.'));
   if (settings.melody?.length) params.set('melody', settings.melody.map(note => note.join(':')).join('.'));
   if (focus) params.set('inside', focus);
@@ -360,6 +399,7 @@ export function fromHash(hash) {
   if (!params.has('scene')) return null;
   const raw = { pruned: (params.get('cut') ?? '').split('.').filter(Boolean) };
   for (const [key, name] of Object.entries(hashKeys)) if (params.has(name)) raw[key] = params.get(name);
+  if (params.has('rule')) raw.rule = params.get('rule');
   const phrase = params.get('melody');
   if (phrase && phrase.length <= maxMelodyNotes * 8 && /^\d{2}:\d{1,4}(\.\d{2}:\d{1,4})*$/.test(phrase)) {
     raw.melody = phrase.split('.').map(note => note.split(':').map(Number));
@@ -374,5 +414,5 @@ export function fromHash(hash) {
   }
   const water = params.get('water');
   if (water === '0' || water === '1') mix.water = water === '1';
-  return { settings, mix, focus: inside && /^[LR]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get('generation')) };
+  return { settings, mix, focus: inside && /^[LRM]{1,7}$/.test(inside) ? inside : null, generation: generationNumber(params.get('generation')) };
 }

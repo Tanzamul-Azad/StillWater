@@ -42,6 +42,7 @@
       <a class="wordmark" href="./" aria-label="Stillwater home"><span class="brand-mark" aria-hidden="true"></span>Stillwater</a>
       <nav class="header-actions" aria-label="Workspace">
         <button class="text-button" id="shape-tree" type="button">Shape tree</button>
+        <button class="text-button" id="jump-export" type="button">Export WAV</button>
         <button class="text-button" id="about" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg>How it works</button>
       </nav>
     </div>
@@ -79,7 +80,7 @@
             <button class="branch-picker" id="browse" type="button">Explore</button>
             <button class="icon-button stage-button" id="undo-tree" type="button" aria-label="Undo tree edit" title="Undo tree edit" disabled><svg class="icon" aria-hidden="true"><use href="#icon-undo"/></svg></button>
             <button class="record-button" id="record" type="button" aria-label="Record performance" aria-pressed="false" title="Record performance"><svg class="icon" aria-hidden="true"><use href="#icon-record"/></svg><span>Record</span></button>
-            <button class="icon-button stage-button" id="calm" type="button" aria-label="Enter calm mode" aria-pressed="false" title="Calm mode"><svg class="icon" aria-hidden="true"><use href="#icon-calm"/></svg><span id="calm-exit-label">Exit calm</span></button>
+            <button class="icon-button stage-button calm-button" id="calm" type="button" aria-label="Enter calm mode" aria-pressed="false" title="Calm mode (C)"><svg class="icon" aria-hidden="true"><use href="#icon-calm"/></svg><span id="calm-label">Calm</span></button>
           </div>
         </div>
 
@@ -87,7 +88,7 @@
           <button type="button" class="play-button" id="play" aria-label="Play score" title="Play score"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
           <div class="timeline">
             <div class="timeline-top"><span id="cycle-label" class="cycle-label">Generation 1</span><span><span id="elapsed">0:00</span><span class="time-divider"> / </span><span id="duration">0:48</span></span></div>
-            <div class="wave-track">
+            <div class="wave-track" title="Recursion time-partition flame graph — drag to seek">
               <canvas id="icicle" aria-hidden="true"></canvas>
               <label class="sr-only" for="seek">Position in the cycle</label>
               <input id="seek" class="seek" type="range" min="0" max="48" value="0" step="0.05">
@@ -129,7 +130,7 @@
         <div class="stage-scene">
           <span id="scene-name">Moonlit Lagoon</span>
           <span id="scene-scale">D major pentatonic</span>
-          <span id="scene-ambience" class="scene-ambience">Ambience off</span>
+          <span id="scene-ambience" class="scene-ambience">Still water · crickets</span>
         </div>
       </aside>
 
@@ -141,6 +142,11 @@
       <section class="settings" aria-label="Settings">
         <section class="settings-section" aria-labelledby="recursion-title">
           <div class="panel-label"><h2 id="recursion-title">Recursion</h2><span id="branch-count" class="branch-count">127 calls</span></div>
+          <div class="rule-grid" role="group" aria-label="Recursion rule">
+            <button class="rule-button" type="button" data-rule="binary" aria-pressed="true">Binary · 2ⁿ</button>
+            <button class="rule-button" type="button" data-rule="fibonacci" aria-pressed="false">Fibonacci</button>
+            <button class="rule-button" type="button" data-rule="ternary" aria-pressed="false">Ternary · 3ⁿ</button>
+          </div>
           <div class="sliders">
             <div class="setting">
               <div class="setting-label"><label for="depth">Depth</label><output for="depth" id="depth-value">6 levels</output></div>
@@ -185,9 +191,9 @@
               <input id="cycle" type="range" min="24" max="96" step="1" value="48">
             </div>
             <div class="setting">
-              <div class="setting-label"><label for="nature">Nature</label><output for="nature" id="nature-value">Off</output></div>
-              <input id="nature" type="range" min="0" max="100" step="1" value="0">
-              <label class="check water-toggle"><input id="water-sounds" type="checkbox"> Water sounds</label>
+              <div class="setting-label"><label for="nature">Nature</label><output for="nature" id="nature-value">28%</output></div>
+              <input id="nature" type="range" min="0" max="100" step="1" value="28">
+              <label class="check water-toggle"><input id="water-sounds" type="checkbox" checked> Water sounds</label>
             </div>
           </div>
           <div class="toggle-row">
@@ -248,8 +254,8 @@
   grow(child(call, late,  -interval));   <span class="c">// right: falls</span>
 }                              <span class="c">// pop: the voice falls silent</span></code></pre>
     <p><strong>The chord follows the stack.</strong> The trunk spans the whole cycle as a low drone. Its children divide that time. The active branches schedule the notes you hear, from slow harmony near the trunk to quick melody at the leaves. Echoes and releases can linger.</p>
-    <p><strong>Parameters.</strong> Depth adds voices. Sway sets how each call shares its time, so it shapes both the rhythm and the tree. Spread sets the melodic interval and the stereo width. The seed, a number or any word, makes the variation repeatable.</p>
-    <p><strong>Pruning</strong> turns a call into a base case. The branch keeps its own note and time while its descendants drop out. Use <strong>Undo</strong> to restore a tree edit. <strong>Listening inside</strong> plays one branch as a full cycle.</p>
+    <p><strong>Parameters &amp; rules.</strong> Switch between Binary, Fibonacci (asymmetric golden phrasing) and Ternary (three-branch waltz meter) recursion. Depth adds voices. Sway sets how each call shares its time. Spread sets the melodic interval and stereo width. Tap the lagoon water to ripple notes.</p>
+    <p><strong>Pruning</strong> turns a call into a base case. The branch keeps its own note and time while its descendants drop out. Use <strong>Undo</strong> to restore a tree edit. <strong>Listening inside</strong> plays one branch as a full cycle—you can also click any frame in the Call stack.</p>
     <p><strong>Step</strong> (or N) runs one call at a time, like a debugger. The markers in <code>grow.js</code> show where each frame is paused, and every step plays that call's note. The score plays the same calls in the same order, spread out over time.</p>
     <p><strong>Hum a tree.</strong> Under Plant a melody, hum a tune for a few seconds. Its notes become the leaves of a new tree. The audio stays on your device.</p>
     <p><strong>Drift</strong> changes one gene per cycle: one call swaps the direction of its intervals, and every few cycles the key shifts. The breathing guide follows the recursion. Each rise is a left call and each fall is a right call.</p>
